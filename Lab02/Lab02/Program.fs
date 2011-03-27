@@ -56,6 +56,9 @@ let distinctfsts orderedNumberWordsContents = loseAdjacentDuplicates [for (word,
 let snds x xs = [for (w, n) in (loseAdjacentDuplicates [for (word, number) in xs do if word = x then yield (word, number)]) -> n ]
 
 let combineWords xs = [for w in (distinctfsts xs) -> (w, snds w xs)]
+
+let makeIndex fileContents = combineWords (sort (numberWords fileContents))
+
 /// repeat a string a given number of times
 let rec repeatStr s = function
     | 0 -> ""
