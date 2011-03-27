@@ -1,0 +1,6 @@
+cathedral   doggerel  dog    cathedral
+battery  doggerel  cathedral   bat
+
+cathedral cat  
+
+bat      bat cat
