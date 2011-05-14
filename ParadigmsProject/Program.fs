@@ -400,6 +400,11 @@ let randomTestClient clients clID avgWait avgBusyTime numExp =
     scheduledClient clients clID 
        ( List.map (fun _ -> (random avgWait*2, random avgBusyTime*2, randTerm() )) [1..numExp] )
 
+// avgWait is the average wait time in the experiments
+// avgBusyTime is the average time it takes to complete the experiment
+// numExp is the number of experiments
+// numClients is the number of clients and labs?
+// labsRules is the rules for the labs
 let randomTest avgWait avgBusyTime numExp numClients labsRules =
     let clients, _ = mkClientsAndLabs numClients labsRules 
     doTest [for i in 0..numClients-1 -> randomTestClient clients i avgWait avgBusyTime numExp  ]
