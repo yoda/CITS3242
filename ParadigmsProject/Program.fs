@@ -303,6 +303,40 @@ let hLock obj f = let onUnlock = ref (fun() -> ())
 /// Add your code for the second part here and below, including in the client class below.
 ////////////////////////////////////////////////////////////////////////////////////
 
+// Need a queue structure to hold the current queues for each of the labs needs to be mirrored on all clients
+// Will need to have:
+// Client ID that is requesting the experiment.
+// Experiment being requested.
+// Maybe the time its being requested.
+// Lab1 Queue [_,_,_,_,_]
+// Lab2 Queue [_,_,_,_,_]
+// Lab3 Queue [_,_,_,_,_]
+// Lab4 Queue [_,_,_,_,_]
+// LabN Queue [_,_,_,_,_]
+
+type enqueuedExperiment (clientID, exp) =
+    member this.ClientID = clientID
+    member this.Experiment = exp
+    member this.Timestamp = DateTime.Now
+
+type labQueue (labID) =
+    let mutable enqueuedExperiments:enqueuedExperiment list = List.empty
+    member this.LabID = labID
+    member this.Enqueue exp = enqueuedExperiments <- List.append enqueuedExperiments exp
+    member this.getQueue = enqueuedExperiments
+
+type labQueueMan (numQueues) = 
+    let labQueues:labQueue list ref = ref ([for i in [0..numQueues] -> labQueue i])
+    member this.getQueues = labQueues.Value
+    member public this.queueForLab labID = [for lq in this.getQueues do if lq.LabID = labID then yield lq]
+    
+prRaw 5 "Queue Tests"
+prRaw 5 "Using 5 labs"
+let z = labQueueMan 5
+let labToGet = 2
+prRaw 5 (sprintf "Attempting to get lab: %d" labToGet)
+prRaw 5 (sprintf "Length: %d" (List.length (z.queueForLab labToGet)))
+prRaw 5 (sprintf "LabID of found lab: %d" (List.head (z.queueForLab labToGet)).LabID)
 // Hints:
 // 1. You must be very careful here that your implementation is a suitable prototype for a decentralized system,
 //    even though you are only building the prototype, not the final system.
@@ -323,6 +357,7 @@ let hLock obj f = let onUnlock = ref (fun() -> ())
 
 /// A class for clients that coordinate and unify experiments before sending them to labs.  
 /// (You need to finish this class.)
+let prClient cl pre str = prIndStr cl (sprintf "Host%d: %s" cl pre) str  // for client output
 
 type client (clientID, numLabs) =
     let clients:client[] ref = ref Array.empty
@@ -338,13 +373,14 @@ type client (clientID, numLabs) =
     member this.ClientID = clientID  // So other clients can find our ID easily
     member this.InitClients theClients theLabs =  clients:=theClients; labs:=theLabs
 
+    
+   // member requestWhichLab
     /// This will be called each time a scientist on this host wants to submit an experiment.
     member this.DoExp delay exp =    // You need to write this member.
-        //  The following code doesn't coordinate the clients at all.  Replace it with code that does.
-        let result = ref None
-        (!labs).[0].DoExp delay exp clientID (fun res -> result:=Some res)
-        while (!result).IsNone do ()  // This is busy waiting, which isn't allowed - you'll need to fix it.
-        (!result).Value
+       prClient clientID "DEBUG" (sprintf "Attempting to do experiment")
+       0
+       
+        
 
     // Add any additional members for client here - you will at least need some that can be called from
     // other instances of the client class in order to coordinate requests.
@@ -361,7 +397,7 @@ let mkClientsAndLabs numClients (labsRules: labRules list) =
     Array.iter (fun (cl:client) -> cl.InitClients clients labs) clients
     (clients, labs)
 
-let prClient cl pre str = prIndStr cl (sprintf "Host%d: %s" cl pre) str  // for client output
+
 
 
 
@@ -371,7 +407,7 @@ let prClient cl pre str = prIndStr cl (sprintf "Host%d: %s" cl pre) str  // for 
 /// This function runs a test where the requests and times for each client are specified in a list (see below).
 /// The list contains tuples (delayBeforeRequestTime, busyDoingExpTime, exp) in sequence.
 let scheduledClient (clients:client[]) clID sched = mkThread ("Client"+string clID) <| fun () ->
-    sched |> List.iteri (fun i (delay,busy,exp) ->
+    sched |> List.iteri (fun i (delay,busy,exp) -> // For each of the scheduled list 
              sleep delay
              prClient clID "" (sprintf "requests %A" exp)
              prIndent clID (sprintf "Exp%d%c result:" clID (char (i+(int 'a')))) (clients.[clID].DoExp busy exp) |> ignore )
@@ -396,8 +432,11 @@ let rec randTerm () =
     Mix (intern 2, intern 2)
  
 /// Create a random test thread for a client-ID with the given average times and number of experiment requests.
-let randomTestClient clients clID avgWait avgBusyTime numExp =
+// clID is an integer 0 -> numClients (array index)
+let randomTestClient clients clID avgWait avgBusyTime numExp = 
+    // scheduledClient is function
     scheduledClient clients clID 
+    // Build a schedule randomising params for 1..numExp
        ( List.map (fun _ -> (random avgWait*2, random avgBusyTime*2, randTerm() )) [1..numExp] )
 
 // avgWait is the average wait time in the experiments
@@ -406,18 +445,20 @@ let randomTestClient clients clID avgWait avgBusyTime numExp =
 // numClients is the number of clients and labs?
 // labsRules is the rules for the labs
 let randomTest avgWait avgBusyTime numExp numClients labsRules =
-    let clients, _ = mkClientsAndLabs numClients labsRules 
+    let clients, _ = mkClientsAndLabs numClients labsRules  // Make clients and labs equal in number with the labsRules
+    // For each of the client id's do a randomTestClient 
     doTest [for i in 0..numClients-1 -> randomTestClient clients i avgWait avgBusyTime numExp  ]
 
-do let clients, _ = mkClientsAndLabs 5 [rulesA; rulesB] 
-   doTest [scheduledClient clients 0 [(0, 500, A)];     // Request a lab at the very start, use it for "A" for 0.5 seconds
-           scheduledClient clients 1 [(200, 300, Mix (Mix (A,Mix (A,A)),B))] ;   // Request after 0.2s, release 0.3s later.
-                 
-           scheduledClient clients 2 [(300, 200, Mix (A,Mix (A,A)))];   // These three will all be waiting for a lab.
-           scheduledClient clients 3 [(400, 200, Mix (A,A))];           // Client 2 should include the others as guests.
-           scheduledClient clients 4 [(400, 200, A)]
-          ]
+
+//do let clients, _ = mkClientsAndLabs 5 [rulesA; rulesB] 
+//   doTest [scheduledClient clients 0 [(0, 500, A)];     // Request a lab at the very start, use it for "A" for 0.5 seconds
+//           scheduledClient clients 1 [(200, 300, Mix (Mix (A,Mix (A,A)),B))] ;   // Request after 0.2s, release 0.3s later.
+//                 
+//           scheduledClient clients 2 [(300, 200, Mix (A,Mix (A,A)))];   // These three will all be waiting for a lab.
+//           scheduledClient clients 3 [(400, 200, Mix (A,A))];           // Client 2 should include the others as guests.
+//           scheduledClient clients 4 [(400, 200, A)]
+//          ]
 
 
-randomTest 10 50 4 8 [rulesB; rulesB] |> ignore            // A smaller random test.
-randomTest 5 20 5 20 [rulesA; rulesB; rulesC] |> ignore    // A larger random test.
+//randomTest 10 50 4 8 [rulesB; rulesB] |> ignore            // A smaller random test.
+//randomTest 5 20 5 20 [rulesA; rulesB; rulesC] |> ignore    // A larger random test.
