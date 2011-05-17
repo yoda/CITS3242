@@ -122,11 +122,14 @@ let rec expSize = function A|B -> 1
 /////////////////////////////////////////////////                        
 /////  Put your code for the first part here                         
 /////////////////////////////////////////////////
-
+type substitution = exp * Var
 // Suffices checks whether exp1 suffices instead of exp2 according to rules.
 let suffices rules (exp1, exp2) = false  // You'll need to implement this properly!
 
-
+let unify exp1 exp2 = function
+                       |
+                       |
+                       |
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Hints:  First, see the hints on the project handout. Then the following are hints to help get you started. 
 //  1. Decompose the problem of finding possible combined experiments into simpler steps.
