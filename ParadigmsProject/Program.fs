@@ -166,25 +166,52 @@ let rec unify exp1 exp2 sublist =
         let a1 = getAssigned v1 s
         let a2 = getAssigned v2 s
         match a1, a2 with
-        | None, Some(a) -> Some(s @ [(v1,a)])
-        | Some(a), None -> Some(s @ [(v2,a)])
-        | None, None -> sublist
-        | Some(a), Some(aa) -> 
+        | None, Some(a) -> Some(s @ [(v1,a)])  //The second var is in the substitution list, the first one isn't. This means we can assign the second var's mapping to the first var's mapping as well.
+        | Some(a), None -> Some(s @ [(v2,a)])  //The first var is in the substitution list, the second one isn't. This means we can assign the first var's mapping to the second var's mapping as well.
+        | None, None -> sublist //Neither var is in the substitution list, so we can resolve it any further, just return the existing mapping.
+        | Some(a), Some(aa) ->  //Both vars are in the substitution list. This means that we need to check they have the same mapping, else a problem may have occured earlier.
             if a = aa then
                 sublist
             else
-                None
-                
-                                                              
-    | e,Var(v1), Some(s) | Var(v1),e -> None //Map the var if it is not already in the substitution list, else check that the var matches what exists in the subst lit
+                None //(Not sure whether this state is reachable or not without a prior bug).
+    | e, Var(v), Some(s) | Var(v), e, Some(s) -> //A non var expression and a var
+        let a = getAssigned v s
+        match a with
+        |None -> Some(s@[(v,e)])
+        |Some(a) -> 
+            if e = a then
+                sublist
+            else
+                None //This variable has already been assigned to a different expression. #TDDO Should this be a unification attempt of the assigned expression and the current expression? :s
     | _,_, _ -> None
-    
+    //TODO I think I need to cope with single particles as well. Will check
             
             
-
+let mapParticleToString = function
+    | A -> "A"
+    | B-> "B"
+    | _ -> "WTF"
     
-let f = unify (Mix(A, B)) (Mix(B, A))
 
+let noneString = "Substitution is None Type"
+
+let rec printSubList sl intendedresult = 
+    match sl with 
+    |None -> prRaw -1 (sprintf "%s\nIntended Result:\n%s\n"noneString intendedresult)
+    |Some([]) -> prRaw -1  (sprintf"Empty substitution list\nIntended Result:\n%s\n"intendedresult)
+    |Some(sl) ->
+        [for v, a in sl ->prRaw -1  (sprintf "Entry %s -> %s" v (mapParticleToString a)) ] |> ignore
+        prRaw -1 (sprintf "End of Substitution List\nIntended Result:\n%s \n" intendedresult)
+//        match x with
+//        |v,a -> let a = prRaw -1  (sprintf "Entry %s -> %s" v (mapParticleToString a)) 
+//            printSubList xs
+        
+printSubList (unify (Mix(A, B)) (Mix(B, A)) (Some(List.empty))) noneString |> ignore //Simple test Works 
+printSubList (unify (Var("t")) (A) (Some(List.empty))) "Entry t -> A"|> ignore //Simple test with variable assignment Works (true)
+printSubList (unify (Var("t")) (A) (Some([("x", B)]))) "Entry x -> B\nEntry t -> A"|> ignore //Simple test with irrelevant variable assignemnt Works (true)
+printSubList (unify (Var("t")) (A) (Some([("t", A)]))) "Entry t -> A\n(Make sure no duplicates)"|> ignore //Simple test with correct variable preassignment Works (true)
+printSubList (unify (Var("t")) (A) (Some([("t", B)])))  noneString|> ignore //Simple test with incorrect variable preassignment Works (false)
+printSubList (unify (Mix(Var("a"), A)) (Mix(B, A)) (Some(List.empty))) "Entry a -> B"|> ignore //Doesn't work :(
 //let rule1 () = let x = newVar "x"
 //               Rule ((x, x), [])
 //let rule1 () = let x = newVar "x"
