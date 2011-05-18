@@ -122,14 +122,49 @@ let rec expSize = function A|B -> 1
 /////////////////////////////////////////////////                        
 /////  Put your code for the first part here                         
 /////////////////////////////////////////////////
-type substitution = exp * Var
+type substitution = (Var * exp) 
+type substitutionlist = substitution list
 // Suffices checks whether exp1 suffices instead of exp2 according to rules.
-let suffices rules (exp1, exp2) = false  // You'll need to implement this properly!
+let suffices rules (exp1, exp2) =  
+    unify exp1 exp2
 
-let unify exp1 exp2 = function
-                       |
-                       |
-                       |
+//let reconcileSubstitutions slist2 = 
+//    match slist1, slist2 with
+//    | 
+
+//let sameparticles exp1 exp2 = 
+//    match exp1, exp2 with
+//    | A,e2 | e2,A -> match e2 with
+//                     | Var -> Some(Var, A)
+//                     | A -> Some()
+//                     | _ -> None
+//    | B,e2 | e2,B -> match e2 with
+//                     | Var -> Some(Var, B)
+//                     | B -> Some()
+//                     | _ -> None
+//    | e1,e2 -> e1 = e2
+//    
+
+let rec unify exp1 exp2 slist= 
+    match exp1, exp2 with
+    | Mix(e1,e2), Mix(e3,e4) -> unify e2 e4 (unify e1 e3 slist)  //Unify the second pair in light of any substitutions in the first pair
+    | Var(v1), Var(v2) -> None //Check if vars match in the substitution list
+    | e,Var(v1) | Var(v1),e -> None //Map the var if it is not already in the substitution list, else check that the var matches what exists in the subst lit
+    | _,_ -> None
+    
+            
+            
+
+    
+let f = unify (Mix(A, B)) (Mix(B, A))
+
+//let rule1 () = let x = newVar "x"
+//               Rule ((x, x), [])
+//let rule1 () = let x = newVar "x"
+//               Rule ((x, x), [])                       
+//suffices [rule1] (A, A) |> prTest "suffices [rule1] (A, A)" 
+
+                       
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Hints:  First, see the hints on the project handout. Then the following are hints to help get you started. 
 //  1. Decompose the problem of finding possible combined experiments into simpler steps.
@@ -428,10 +463,11 @@ let doTest threads = startTime:=DateTime.Now
 let randBase() = match random 2 with 0->A | 1->B
 
 let rec randTerm () =     
-    let rec intern maxDepth = match random 2, maxDepth with
-                          | 1, _ -> randBase()
-                          | _, 1 -> randBase()
-                          | _ -> Mix (intern (maxDepth-1), intern (maxDepth-1))
+    let rec intern maxDepth = 
+        match random 2, maxDepth with
+        | 1, _ -> randBase()
+        | _, 1 -> randBase()
+        | _ -> Mix (intern (maxDepth-1), intern (maxDepth-1))
     Mix (intern 2, intern 2)
  
 /// Create a random test thread for a client-ID with the given average times and number of experiment requests.
