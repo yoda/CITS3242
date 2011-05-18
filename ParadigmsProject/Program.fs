@@ -122,11 +122,10 @@ let rec expSize = function A|B -> 1
 /////////////////////////////////////////////////                        
 /////  Put your code for the first part here                         
 /////////////////////////////////////////////////
-type substitution = (Var * exp) 
+type substitution = (exp * exp) 
 type substitutionlist = substitution list
 // Suffices checks whether exp1 suffices instead of exp2 according to rules.
-let suffices rules (exp1, exp2) =  
-    unify exp1 exp2
+let suffices rules (exp1, exp2) = false
 
 //let reconcileSubstitutions slist2 = 
 //    match slist1, slist2 with
@@ -145,12 +144,40 @@ let suffices rules (exp1, exp2) =
 //    | e1,e2 -> e1 = e2
 //    
 
-let rec unify exp1 exp2 slist= 
-    match exp1, exp2 with
-    | Mix(e1,e2), Mix(e3,e4) -> unify e2 e4 (unify e1 e3 slist)  //Unify the second pair in light of any substitutions in the first pair
-    | Var(v1), Var(v2) -> None //Check if vars match in the substitution list
-    | e,Var(v1) | Var(v1),e -> None //Map the var if it is not already in the substitution list, else check that the var matches what exists in the subst lit
-    | _,_ -> None
+//So far the only bit of code I'd have any confidence in so far... ;)
+let rec getAssigned v sublist =
+    match sublist with
+    |[] -> None
+    |x::xs -> 
+        match x with
+        |v1, a -> 
+            if v = v1 then 
+                Some(a)
+            else 
+                getAssigned v xs
+                
+        
+
+let rec unify exp1 exp2 sublist = 
+    match exp1, exp2, sublist with
+    | _,_,None -> None
+    | Mix(e1,e2), Mix(e3,e4), s -> unify e2 e4 (unify e1 e3 s)  //Unify the second pair in light of any substitutions in the first pair
+    | Var(v1), Var(v2), Some(s) -> 
+        let a1 = getAssigned v1 s
+        let a2 = getAssigned v2 s
+        match a1, a2 with
+        | None, Some(a) -> Some(s @ [(v1,a)])
+        | Some(a), None -> Some(s @ [(v2,a)])
+        | None, None -> sublist
+        | Some(a), Some(aa) -> 
+            if a = aa then
+                sublist
+            else
+                None
+                
+                                                              
+    | e,Var(v1), Some(s) | Var(v1),e -> None //Map the var if it is not already in the substitution list, else check that the var matches what exists in the subst lit
+    | _,_, _ -> None
     
             
             
