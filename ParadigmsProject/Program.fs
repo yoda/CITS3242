@@ -124,8 +124,22 @@ let rec expSize = function A|B -> 1
 /////////////////////////////////////////////////
 type substitution = (exp * exp) 
 type substitutionlist = substitution list
-// Suffices checks whether exp1 suffices instead of exp2 according to rules.
-let suffices rules (exp1, exp2) = false
+// Suffices checks whether exp1 suffices instead of exp2 according to rules.\
+//suffices rulesA (Mix (Mix (A, B), B),A) |> prTest "suffices rulesA (Mix (Mix (A, B), B),A)"
+//
+//let rule2 () = let x, xx, y = newVar3 ("x", "xx", "y")
+//               Rule ((Mix(x,xx), y),  [(x,y)])
+let rec matchRule exp1 exp2 = 
+    match exp1, exp2 with
+    |Mix(e1,e2),Mix(e3,e4) -> matchRule e1 e3 && matchRule e2 e4
+    |_ -> false //TODO need to check the basic pattern of the thing matches
+
+let suffices rules (exp1, exp2) = 
+    match rules with
+    |[] -> true
+    |x::xs -> false //go through list or something to determine suffices
+                
+                
 
 //let reconcileSubstitutions slist2 = 
 //    match slist1, slist2 with
@@ -155,17 +169,28 @@ let rec getAssigned v sublist =
                 Some(a)
             else 
                 getAssigned v xs
+               
+            
+            
+let mapParticleToString = function
+    | A -> "A"
+    | B-> "B"
+    | _ -> "WTF"
                 
-let splitExp e =
-    match e with
-    |v,a -> (v,a)
+let rec exptostring exp =
+    match exp with
+    |Mix(e1,e2) -> sprintf "Mix(%s,%s)" (exptostring e1) (exptostring e2)
+    |A|B -> mapParticleToString exp
+    |Var(x) -> sprintf "Var(\"%s\")" x
 
 let rec unify exp1 exp2 sublist = 
-    prRaw -1 (sprintf "Unify Called with %O and %O and subList %O " exp1 exp2 sublist) |> ignore
+    prRaw -1 (sprintf "Unify Called with %s and %s and subList %O " (exptostring exp1) (exptostring exp2) sublist) |> ignore
     match exp1, exp2, sublist with
-    | _,_,None -> None
+    | _,_,None -> 
+        prRaw -1 (sprintf "_ _ None!!") |> ignore
+        None
     | Mix(e1,e2), Mix(e3,e4), s -> 
-        prRaw -1 (sprintf "mix %O %O and mix %O %O being unified "e1 e2 e3 e4) |> ignore
+        prRaw -1 (sprintf "mix %s %s and mix %s %s being unified "(exptostring e1) (exptostring e2) (exptostring e3) (exptostring e4)) |> ignore
         unify e2 e4 (unify e1 e3 s)  //Unify the second pair in light of any substitutions in the first pair
     | Var(v1), Var(v2), Some(s) -> 
         let a1 = getAssigned v1 s
@@ -204,16 +229,13 @@ let rec unify exp1 exp2 sublist =
                 sublist
             else
                 None //This variable has already been assigned to a different expression. #TDDO Should this be a unification attempt of the assigned expression and the current expression? :s
-    | _,_, _ -> None
-    //TODO I think I need to cope with single particles as well. Will check
-            
-            
-let mapParticleToString = function
-    | A -> "A"
-    | B-> "B"
-    | _ -> "WTF"
+    | A,B, s | B,A, s -> None //Two different particles
+    | A,A, s | B,B, s -> s    //Two identical particles
+    | _,_, _ -> None          //A mystery to us all.
+
     
 
+//Some quick tests
 let noneString = "Substitution is None Type"
 
 let rec printSubList sl intendedresult = 
