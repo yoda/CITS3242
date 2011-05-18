@@ -156,29 +156,50 @@ let rec getAssigned v sublist =
             else 
                 getAssigned v xs
                 
-        
+let splitExp e =
+    match e with
+    |v,a -> (v,a)
 
 let rec unify exp1 exp2 sublist = 
+    prRaw -1 (sprintf "Unify Called with %O and %O and subList %O " exp1 exp2 sublist) |> ignore
     match exp1, exp2, sublist with
     | _,_,None -> None
-    | Mix(e1,e2), Mix(e3,e4), s -> unify e2 e4 (unify e1 e3 s)  //Unify the second pair in light of any substitutions in the first pair
+    | Mix(e1,e2), Mix(e3,e4), s -> 
+        prRaw -1 (sprintf "mix %O %O and mix %O %O being unified "e1 e2 e3 e4) |> ignore
+        unify e2 e4 (unify e1 e3 s)  //Unify the second pair in light of any substitutions in the first pair
     | Var(v1), Var(v2), Some(s) -> 
         let a1 = getAssigned v1 s
         let a2 = getAssigned v2 s
+        prRaw -1 (sprintf "var %s and var %s being unified " v1 v2) |> ignore
         match a1, a2 with
-        | None, Some(a) -> Some(s @ [(v1,a)])  //The second var is in the substitution list, the first one isn't. This means we can assign the second var's mapping to the first var's mapping as well.
-        | Some(a), None -> Some(s @ [(v2,a)])  //The first var is in the substitution list, the second one isn't. This means we can assign the first var's mapping to the second var's mapping as well.
-        | None, None -> sublist //Neither var is in the substitution list, so we can resolve it any further, just return the existing mapping.
+        | None, Some(a) -> 
+            prRaw -1 (sprintf "One found in sublist ") |> ignore
+            Some(s @ [(v1,a)])  //The second var is in the substitution list, the first one isn't. This means we can assign the second var's mapping to the first var's mapping as well.
+        | Some(a), None -> 
+            prRaw -1 (sprintf "One found in sublist") |> ignore
+            Some(s @ [(v2,a)])  //The first var is in the substitution list, the second one isn't. This means we can assign the first var's mapping to the second var's mapping as well.
+        | None, None -> 
+            prRaw -1 (sprintf "Neither found in sublist ") |> ignore
+            sublist //Neither var is in the substitution list, so we can resolve it any further, just return the existing mapping.
         | Some(a), Some(aa) ->  //Both vars are in the substitution list. This means that we need to check they have the same mapping, else a problem may have occured earlier.
+        
             if a = aa then
+                prRaw -1 (sprintf "Both found and both are equal ") |> ignore
                 sublist
             else
+                prRaw -1 (sprintf "Both found and they are different, maybe a bug?") |> ignore
                 None //(Not sure whether this state is reachable or not without a prior bug).
     | e, Var(v), Some(s) | Var(v), e, Some(s) -> //A non var expression and a var
+        prRaw -1 (sprintf "var %s and exp %O being unified " v e) |> ignore
         let a = getAssigned v s
         match a with
-        |None -> Some(s@[(v,e)])
+        |None ->
+            prRaw -1 (sprintf "No match found for %s " v) |> ignore 
+            let z = Some(s@[(v,e)])
+            prRaw -1 (sprintf "%O " z) |> ignore 
+            z
         |Some(a) -> 
+            prRaw -1 (sprintf "Match found for %s " v) |> ignore 
             if e = a then
                 sublist
             else
@@ -202,16 +223,13 @@ let rec printSubList sl intendedresult =
     |Some(sl) ->
         [for v, a in sl ->prRaw -1  (sprintf "Entry %s -> %s" v (mapParticleToString a)) ] |> ignore
         prRaw -1 (sprintf "End of Substitution List\nIntended Result:\n%s \n" intendedresult)
-//        match x with
-//        |v,a -> let a = prRaw -1  (sprintf "Entry %s -> %s" v (mapParticleToString a)) 
-//            printSubList xs
         
 printSubList (unify (Mix(A, B)) (Mix(B, A)) (Some(List.empty))) noneString |> ignore //Simple test Works 
-printSubList (unify (Var("t")) (A) (Some(List.empty))) "Entry t -> A"|> ignore //Simple test with variable assignment Works (true)
-printSubList (unify (Var("t")) (A) (Some([("x", B)]))) "Entry x -> B\nEntry t -> A"|> ignore //Simple test with irrelevant variable assignemnt Works (true)
-printSubList (unify (Var("t")) (A) (Some([("t", A)]))) "Entry t -> A\n(Make sure no duplicates)"|> ignore //Simple test with correct variable preassignment Works (true)
-printSubList (unify (Var("t")) (A) (Some([("t", B)])))  noneString|> ignore //Simple test with incorrect variable preassignment Works (false)
-printSubList (unify (Mix(Var("a"), A)) (Mix(B, A)) (Some(List.empty))) "Entry a -> B"|> ignore //Doesn't work :(
+printSubList (unify (Var("a")) (A) (Some(List.empty))) "Entry a -> A"|> ignore //Simple test with variable assignment Works (true)
+printSubList (unify (Var("a")) (A) (Some([("b", B)]))) "Entry b -> B\nEntry a -> A"|> ignore //Simple test with irrelevant variable assignemnt Works (true)
+printSubList (unify (Var("anew")) (A) (Some([("aold", A)]))) "Entry t -> A\n(Make sure no duplicates)"|> ignore //Simple test with correct variable preassignment Works (true)
+printSubList (unify (Var("b")) (A) (Some([("b", B)])))  noneString|> ignore //Simple test with incorrect variable preassignment Works (false)
+printSubList (unify (Mix(Var("b"), A)) (Mix(B, A)) (Some(List.empty))) "Entry b -> B"|> ignore //Doesn't work :(
 //let rule1 () = let x = newVar "x"
 //               Rule ((x, x), [])
 //let rule1 () = let x = newVar "x"
