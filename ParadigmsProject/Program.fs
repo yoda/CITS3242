@@ -510,22 +510,27 @@ type client (clientID, numLabs) =
 
     let isFreeLab:bool = Array.exists (fun lkc -> lkc < 0) lastKnownCoord
     let getFreeLab:labID = if isFreeLab then Array.get [|for x in lastKnownCoord do if x < 0 then yield x|] 0 else -1
+    let mutable labControlled = 0
+    
 
     do printfn "Last known coords"
     do lastKnownCoord |> Array.iter (fun lkc -> (printfn "%d is in a lab" lkc))
     member this.ClientID = clientID  // So other clients can find our ID easily
-    member this.InitClients theClients theLabs =  clients:=theClients; labs:=theLabs
-    
+    member this.InitClients theClients theLabs =  clients:=theClients; labs:=theLabs; labControlled <- if ((Array.length !labs) - 1) < clientID then -1 else clientID 
     
     
    
     // This will be called each time a scientist on this host wants to submit an experiment.
     member this.DoExp delay exp =    // You need to write this member.
        prClient clientID "DEBUG" (sprintf "Attempting to do experiment")
-       if isFreeLab // If there is a free lab then just do an experiment 
-       then (Array.get labs.contents getFreeLab).DoExp delay exp |> ignore
-       else
-       (queueManager.queueForLab 0).Enqueue( enqueuedExperiment(this.ClientID, exp))
+       if labControlled > -1 // If i control a lab then do it
+       then 
+        prClient clientID "DEBUG" (sprintf "Length of labs: %d" (Array.length labs.contents))
+        prClient clientID "DEBUG" (sprintf "Index attempted to access: %d" labControlled)
+        (Array.get labs.contents labControlled).DoExp delay exp |> ignore
+       else 
+       (queueManager.queueForLab 0).Enqueue( enqueuedExperiment(this.ClientID, exp)) |> ignore
+       
        
        
        
