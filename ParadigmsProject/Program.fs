@@ -523,15 +523,16 @@ type client (clientID, numLabs) =
     // This will be called each time a scientist on this host wants to submit an experiment.
     member this.DoExp delay exp =    // You need to write this member.
        prClient clientID "DEBUG" (sprintf "Attempting to do experiment")
+       let result = ref None
        if labControlled > -1 // If i control a lab then do it
-       then 
-        prClient clientID "DEBUG" (sprintf "Length of labs: %d" (Array.length labs.contents))
-        prClient clientID "DEBUG" (sprintf "Index attempted to access: %d" labControlled)
-        (Array.get labs.contents labControlled).DoExp delay exp |> ignore
-       else 
-       (queueManager.queueForLab 0).Enqueue( enqueuedExperiment(this.ClientID, exp)) |> ignore
-       
-       
+        then 
+            prClient clientID "DEBUG" (sprintf "Length of labs: %d" (Array.length labs.contents))
+            prClient clientID "DEBUG" (sprintf "Index attempted to access: %d" labControlled)
+            labs.contents.[labControlled].DoExp delay exp clientID (fun res -> result:=Some res) |> ignore
+        else 
+            (queueManager.queueForLab 0).Enqueue( enqueuedExperiment(this.ClientID, exp)) |> ignore
+       while (!result).IsNone do ()  // This is busy waiting, which isn't allowed - you'll need to fix it.
+       (!result).Value
        
        
        
