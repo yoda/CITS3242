@@ -135,7 +135,7 @@ let rec matchRule exp1 exp2 =
     |_ -> false //TODO need to check the basic pattern of the thing matches
 
 let rec suffices rules (exp1, exp2) = 
-    unify 
+    //unify 
     match rules with
     |[] -> true
     |x::xs -> false
