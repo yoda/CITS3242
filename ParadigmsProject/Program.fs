@@ -1,4 +1,4 @@
-#light
+﻿#light
 
 // Programming Paradigms Project
 
@@ -203,6 +203,20 @@ let rec unify exp1 exp2 sublist =
     | _,_, _ -> None          //A mystery to us all.
 
 
+let unifyTwoRules exp1 exp2 prop1 prop2 = 
+    match unify exp1 prop1 newSubString with
+       |None -> None
+       |sl -> unify exp2 prop2 sl
+   
+//Suffices
+let rec suffices rules (exp1, exp2) = 
+   prRaw -1 (sprintf "Suffices Called with %s and %s and subList %O " (exptostring exp1) (exptostring exp2) rules) |> ignore
+   for ((prop1, prop2), subs) in rules do
+       match unifyTwoRules exp1 exp2 prop1 prop2 with
+       |Some(sl) -> 
+           false |> ignore
+       |_ -> false |> ignore
+   false
 //Some quick tests
 let noneString = "Substitution is None Type"
 
