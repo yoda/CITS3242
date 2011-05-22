@@ -134,10 +134,12 @@ let rec matchRule exp1 exp2 =
     |Mix(e1,e2),Mix(e3,e4) -> matchRule e1 e3 && matchRule e2 e4
     |_ -> false //TODO need to check the basic pattern of the thing matches
 
-let suffices rules (exp1, exp2) = 
+let rec suffices rules (exp1, exp2) = 
+    unify 
     match rules with
     |[] -> true
-    |x::xs -> false //go through list or something to determine suffices
+    |x::xs -> 
+    //false //go through list or something to determine suffices
                 
                 
 
@@ -171,18 +173,20 @@ let rec getAssigned v sublist =
                 getAssigned v xs
                
             
-            
+//Just to aid printing neatly.
 let mapParticleToString = function
     | A -> "A"
-    | B-> "B"
-    | _ -> "WTF"
+    | B-> "B" 
+    | _ -> "WTF?" //What the fudge? Who put this particle in the machine?
                 
+//Decomposes an experiment recursively to create a string representation
 let rec exptostring exp =
     match exp with
     |Mix(e1,e2) -> sprintf "Mix(%s,%s)" (exptostring e1) (exptostring e2)
     |A|B -> mapParticleToString exp
     |Var(x) -> sprintf "Var(\"%s\")" x
 
+//Unify
 let rec unify exp1 exp2 sublist = 
     prRaw -1 (sprintf "Unify Called with %s and %s and subList %O " (exptostring exp1) (exptostring exp2) sublist) |> ignore
     match exp1, exp2, sublist with
