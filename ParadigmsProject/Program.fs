@@ -209,15 +209,17 @@ let unifyTwoRules exp1 exp2 prop1 prop2 =
        |sl -> unify exp2 prop2 sl
    
 //Suffices
-let rec suffices rules (exp1, exp2) = 
+let rec suffices (rules : ruleGen list) (exp1, exp2) = 
     prRaw -1 (sprintf "Suffices Called with %s and %s and subList %O " (exptostring exp1) (exptostring exp2) rules) |> ignore
-    for suff, subgoals in rules do
-        match suff with
-        |prop1, prop2 -> match unifyTwoRules exp1 exp2 prop1 prop2 with
-            |Some(sl) -> 
-                false |> ignore
-            |_ -> false |> ignore
-        |_ -> () |> ignore
+    for r in rules do
+        let currRule = r ()
+        match currRule with
+        |Rule((prop1, prop2), subGoalList) -> 
+                match unifyTwoRules exp1 exp2 prop1 prop2 with
+                |Some(sl) -> 
+                    false |> ignore
+                |None -> false |> ignore
+        |_ -> None |> ignore
     false
 //        match r with 
 //        |((prop1, prop2), subs) -> 
