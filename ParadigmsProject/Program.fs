@@ -450,29 +450,32 @@ let hLock obj f = let onUnlock = ref (fun() -> ())
 // Lab4 Queue [_,_,_,_,_]
 // LabN Queue [_,_,_,_,_]
 
+// An enqueued experiment
 type enqueuedExperiment (clientID, exp) =
     member this.ClientID = clientID
     member this.Experiment = exp
     member this.Timestamp = DateTime.Now
 
+// Queue for a particular lab
 type labQueue (labID) =
-    let mutable enqueuedExperiments:enqueuedExperiment list = List.empty
+    let enqueuedExperiments:enqueuedExperiment list ref = ref List.empty
     member this.LabID = labID
-    member this.Enqueue exp = enqueuedExperiments <- List.append enqueuedExperiments exp
+    member this.Enqueue exp = enqueuedExperiments := List.append !enqueuedExperiments [exp] // Takes in an enqueuedExperiment
     member this.getQueue = enqueuedExperiments
 
+// Queue manager
 type labQueueMan (numQueues) = 
     let labQueues:labQueue list ref = ref ([for i in [0..numQueues] -> labQueue i])
-    member this.getQueues = labQueues.Value
-    member public this.queueForLab labID = [for lq in this.getQueues do if lq.LabID = labID then yield lq]
+    do printfn "Creating labQueueMan for %d labs" numQueues
+    member this.getQueues = !labQueues
+    member this.queueForLab labID = [for lq in labQueues.contents do if lq.LabID = labID then yield lq].Head // Can only ever be 1
     
 prRaw 5 "Queue Tests"
 prRaw 5 "Using 5 labs"
 let z = labQueueMan 5
 let labToGet = 2
 prRaw 5 (sprintf "Attempting to get lab: %d" labToGet)
-prRaw 5 (sprintf "Length: %d" (List.length (z.queueForLab labToGet)))
-prRaw 5 (sprintf "LabID of found lab: %d" (List.head (z.queueForLab labToGet)).LabID)
+prRaw 5 (sprintf "LabID of found lab: %d" (z.queueForLab labToGet).LabID)
 // Hints:
 // 1. You must be very careful here that your implementation is a suitable prototype for a decentralized system,
 //    even though you are only building the prototype, not the final system.
@@ -506,15 +509,36 @@ type client (clientID, numLabs) =
     let prStr (pre:string) str = prIndStr clientID (sprintf "Client%d: %s" clientID pre) str 
     let pr (pre:string) res = prStr pre (sprintf "%A" res); res
 
-    member this.ClientID = clientID  // So other clients can find our ID easily
-    member this.InitClients theClients theLabs =  clients:=theClients; labs:=theLabs
+    // Setup the lab queue manager for this client
+    let queueManager:labQueueMan = labQueueMan (numLabs)
 
+    let isFreeLab:bool = Array.exists (fun lkc -> lkc < 0) lastKnownCoord
+    let getFreeLab:labID = if isFreeLab then Array.get [|for x in lastKnownCoord do if x < 0 then yield x|] 0 else -1
+    let mutable labControlled = 0
     
-   // member requestWhichLab
-    /// This will be called each time a scientist on this host wants to submit an experiment.
+
+    do printfn "Last known coords"
+    do lastKnownCoord |> Array.iter (fun lkc -> (printfn "%d is in a lab" lkc))
+    member this.ClientID = clientID  // So other clients can find our ID easily
+    member this.InitClients theClients theLabs =  clients:=theClients; labs:=theLabs; labControlled <- if ((Array.length !labs) - 1) < clientID then -1 else clientID 
+    
+    
+   
+    // This will be called each time a scientist on this host wants to submit an experiment.
     member this.DoExp delay exp =    // You need to write this member.
        prClient clientID "DEBUG" (sprintf "Attempting to do experiment")
-       0
+       let result = ref None
+       if labControlled > -1 // If i control a lab then do it
+        then 
+            prClient clientID "DEBUG" (sprintf "Length of labs: %d" (Array.length labs.contents))
+            prClient clientID "DEBUG" (sprintf "Index attempted to access: %d" labControlled)
+            labs.contents.[labControlled].DoExp delay exp clientID (fun res -> result:=Some res) |> ignore
+        else 
+            (queueManager.queueForLab 0).Enqueue( enqueuedExperiment(this.ClientID, exp)) |> ignore
+       while (!result).IsNone do ()  // This is busy waiting, which isn't allowed - you'll need to fix it.
+       (!result).Value
+       
+       
        
         
 
@@ -597,5 +621,5 @@ let randomTest avgWait avgBusyTime numExp numClients labsRules =
 //          ]
 
 
-//randomTest 10 50 4 8 [rulesB; rulesB] |> ignore            // A smaller random test.
+randomTest 10 50 4 8 [rulesB; rulesB] |> ignore            // A smaller random test.
 //randomTest 5 20 5 20 [rulesA; rulesB; rulesC] |> ignore    // A larger random test.
