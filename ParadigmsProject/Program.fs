@@ -210,13 +210,22 @@ let unifyTwoRules exp1 exp2 prop1 prop2 =
    
 //Suffices
 let rec suffices rules (exp1, exp2) = 
-   prRaw -1 (sprintf "Suffices Called with %s and %s and subList %O " (exptostring exp1) (exptostring exp2) rules) |> ignore
-   for ((prop1, prop2), subs) in rules do
-       match unifyTwoRules exp1 exp2 prop1 prop2 with
-       |Some(sl) -> 
-           false |> ignore
-       |_ -> false |> ignore
-   false
+    prRaw -1 (sprintf "Suffices Called with %s and %s and subList %O " (exptostring exp1) (exptostring exp2) rules) |> ignore
+    for suff, subgoals in rules do
+        match suff with
+        |prop1, prop2 -> match unifyTwoRules exp1 exp2 prop1 prop2 with
+            |Some(sl) -> 
+                false |> ignore
+            |_ -> false |> ignore
+        |_ -> () |> ignore
+    false
+//        match r with 
+//        |((prop1, prop2), subs) -> 
+//            match unifyTwoRules exp1 exp2 prop1 prop2 with
+//            |Some(sl) -> 
+//                false |> ignore
+//            |_ -> false |> ignore
+//    false
 //Some quick tests
 let noneString = "Substitution is None Type"
 
