@@ -510,7 +510,10 @@ type client (clientID, numLabs) =
 
     let isFreeLab:bool = Array.exists (fun lkc -> lkc < 0) lastKnownCoord
     let getFreeLab:labID = if isFreeLab then Array.get [|for x in lastKnownCoord do if x < 0 then yield x|] 0 else -1
-    let mutable labControlled = 0
+    let mutable labControlled = -1 // -1 is I dont control a lab
+    let mutable experimentCompleted = false
+
+    let completeExperimentJob = experimentCompleted <- true
     
 
     do printfn "Last known coords"
@@ -522,17 +525,28 @@ type client (clientID, numLabs) =
    
     // This will be called each time a scientist on this host wants to submit an experiment.
     member this.DoExp delay exp =    // You need to write this member.
-       prClient clientID "DEBUG" (sprintf "Attempting to do experiment")
-       let result = ref None
-       if labControlled > -1 // If i control a lab then do it
-        then 
-            prClient clientID "DEBUG" (sprintf "Length of labs: %d" (Array.length labs.contents))
-            prClient clientID "DEBUG" (sprintf "Index attempted to access: %d" labControlled)
-            labs.contents.[labControlled].DoExp delay exp clientID (fun res -> result:=Some res) |> ignore
-        else 
-            (queueManager.queueForLab 0).Enqueue( enqueuedExperiment(this.ClientID, exp)) |> ignore
-       while (!result).IsNone do ()  // This is busy waiting, which isn't allowed - you'll need to fix it.
-       (!result).Value
+        
+        experimentCompleted <- false
+        let result = ref None
+        if labControlled > -1 // If i control a lab then do it
+            then 
+                prClient clientID "DEBUG" (sprintf "Attempting to do experiment")
+                let currentLab = labs.contents.[labControlled]
+                hLock currentLab <| fun labJob ->
+                    let experimentJob = currentLab.DoExp delay exp clientID (fun res -> result:= Some res); completeExperimentJob
+                    labJob <| fun() -> prClient clientID "DEBUG" (sprintf "Was waiting")
+            else 
+                (queueManager.queueForLab 0).Enqueue( enqueuedExperiment(this.ClientID, exp)) |> ignore
+       
+        if experimentCompleted = true
+            then
+                experimentCompleted <- false
+                (!result).Value
+            else
+                false
+                
+            
+
        
        
        
@@ -601,7 +615,13 @@ let randomTestClient clients clID avgWait avgBusyTime numExp =
 // numExp is the number of experiments
 // numClients is the number of clients and labs?
 // labsRules is the rules for the labs
-let randomTest avgWait avgBusyTime numExp numClients labsRules =
+let randomTest avgWait avgBusyTime numExp numClients (labsRules: labRules list) =
+    prRaw 5 "================================================================="
+    prRaw 5 "Doing Random Test"
+    prRaw 5 (sprintf "Number of Experiments: %d" numExp)
+    prRaw 5 (sprintf "Number of Clients: %d" numClients)
+    prRaw 5 (sprintf "Number of Labs: %d" (labsRules.Length))
+    prRaw 5 "================================================================="
     let clients, _ = mkClientsAndLabs numClients labsRules  // Make clients and labs equal in number with the labsRules
     // For each of the client id's do a randomTestClient 
     doTest [for i in 0..numClients-1 -> randomTestClient clients i avgWait avgBusyTime numExp  ]
