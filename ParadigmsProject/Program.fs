@@ -524,8 +524,7 @@ type client (clientID, numLabs) =
     
    
     // This will be called each time a scientist on this host wants to submit an experiment.
-    member this.DoExp delay exp =    // You need to write this member.
-        
+    member this.DoExp delay exp =    // You need to write this dick.
         experimentCompleted <- false
         let result = ref None
         if labControlled > -1 // If i control a lab then do it
@@ -533,17 +532,22 @@ type client (clientID, numLabs) =
                 prClient clientID "DEBUG" (sprintf "Attempting to do experiment")
                 let currentLab = labs.contents.[labControlled]
                 hLock currentLab <| fun labJob ->
-                    let experimentJob = currentLab.DoExp delay exp clientID (fun res -> result:= Some res); completeExperimentJob
-                    labJob <| fun() -> prClient clientID "DEBUG" (sprintf "Was waiting")
+                    // The continueation function fed into DoExp lab function needs to notifiy the caller of the result
+                    let experimentJob = currentLab.DoExp delay exp clientID (fun res -> result:= Some res; completeExperimentJob) // After the thread that got the lock does its work then it can report its results
+                    // After calling the experiment thread continue with...
+                    labJob <| fun() -> experimentJob; prClient clientID "DEBUG" (sprintf "Ran Experiment, Completed?: %b" experimentCompleted)
             else 
                 (queueManager.queueForLab 0).Enqueue( enqueuedExperiment(this.ClientID, exp)) |> ignore
        
-        if experimentCompleted = true
+        if experimentCompleted
             then
                 experimentCompleted <- false
+                prClient clientID "DEBUG" (sprintf "Succeeded at doing experiment")
                 (!result).Value
             else
+                prClient clientID "DEBUG" (sprintf "Failed at doing experiment")
                 false
+                
                 
             
 
@@ -636,6 +640,7 @@ let randomTest avgWait avgBusyTime numExp numClients (labsRules: labRules list) 
 //           scheduledClient clients 4 [(400, 200, A)]
 //          ]
 
-
-randomTest 10 50 4 8 [rulesB; rulesB] |> ignore            // A smaller random test.
+randomTest 10 50 4 1 [rulesB] |> ignore
+//randomTest 10 50 4 2 [rulesB; rulesB] |> ignore
+//randomTest 10 50 4 8 [rulesB; rulesB] |> ignore            // A smaller random test.
 //randomTest 5 20 5 20 [rulesA; rulesB; rulesC] |> ignore    // A larger random test.
