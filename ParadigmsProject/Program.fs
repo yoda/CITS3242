@@ -136,16 +136,6 @@ let rec getAssigned v sublist =
                 Some(a)
             else 
                 getAssigned v xs
-// Suffices checks whether exp1 suffices instead of exp2 according to rules.\
-//suffices rulesA (Mix (Mix (A, B), B),A) |> prTest "suffices rulesA (Mix (Mix (A, B), B),A)"
-//
-//let rule2 () = let x, xx, y = newVar3 ("x", "xx", "y")
-//               Rule ((Mix(x,xx), y),  [(x,y)])
-let rec matchRule exp1 exp2 = 
-    match exp1, exp2 with
-    |Mix(e1,e2),Mix(e3,e4) -> matchRule e1 e3 && matchRule e2 e4
-    |_ -> false //TODO need to check the basic pattern of the thing matches
-    
 //Just to aid printing neatly.
 let mapParticleToString = function
     | A -> "A"
@@ -211,38 +201,7 @@ let rec unify exp1 exp2 sublist =
     | A,B, s | B,A, s -> None //Two different particles
     | A,A, s | B,B, s -> s    //Two identical particles
     | _,_, _ -> None          //A mystery to us all.
-    
-let unifyTwoRules exp1 exp2 prop1 prop2 = 
-     match unify exp1 prop1 newSubString with
-        |None -> None
-        |sl -> unify exp2 prop2 sl
-    
-//Suffices
-let rec suffices rules (exp1, exp2) = 
-    prRaw -1 (sprintf "Suffices Called with %s and %s and subList %O " (exptostring exp1) (exptostring exp2) rules) |> ignore
-    for ((prop1, prop2), subs) in rules do
-        match unifyTwoRules exp1 exp2 prop1 prop2 with
-        |Some(sl) -> match trySubGoals with
-    
-//    
-//    possibleRules = [for  if unifyTwoRules exp1 exp2 prop1 prop2 = Some(x) -> ((prop1, prop2), subs), x]
-//    
-//    match rules with
-//    |[] -> false
-//    |((prop1, prop2), subs)::xs -> 
-//        match unifyTwoRules exp1 exp2 prop1 prop2 with
-//        |None -> false
-//        |sl -> match unify exp2 prop2 sl with
-//            |None -> suffices xs (exp1, exp2) //This rule wasn't a match, go to next rule
-//            |Some(sl2) -> match subgoalSuffices //Go through the subgoals to check their substitutions
 
-
-
-//Made another function because the existing code doesn't allow for a sunstitution list to past in as an argument. otherwise I'd use the suffices rule recursively.
-//let rec subgoalSuffices rules subList ->
-//    match rules with ->
-//    |[] -> false
-//    |x::xs ->
 
 //Some quick tests
 let noneString = "Substitution is None Type"
@@ -519,7 +478,10 @@ type client (clientID, numLabs) =
 
     let isFreeLab:bool = Array.exists (fun lkc -> lkc < 0) lastKnownCoord
     let getFreeLab:labID = if isFreeLab then Array.get [|for x in lastKnownCoord do if x < 0 then yield x|] 0 else -1
-    let mutable labControlled = 0
+    let mutable labControlled = -1 // -1 is I dont control a lab
+    let mutable experimentCompleted = false
+
+    let completeExperimentJob = experimentCompleted <- true
     
 
     do printfn "Last known coords"
@@ -530,18 +492,33 @@ type client (clientID, numLabs) =
     
    
     // This will be called each time a scientist on this host wants to submit an experiment.
-    member this.DoExp delay exp =    // You need to write this member.
-       prClient clientID "DEBUG" (sprintf "Attempting to do experiment")
-       let result = ref None
-       if labControlled > -1 // If i control a lab then do it
-        then 
-            prClient clientID "DEBUG" (sprintf "Length of labs: %d" (Array.length labs.contents))
-            prClient clientID "DEBUG" (sprintf "Index attempted to access: %d" labControlled)
-            labs.contents.[labControlled].DoExp delay exp clientID (fun res -> result:=Some res) |> ignore
-        else 
-            (queueManager.queueForLab 0).Enqueue( enqueuedExperiment(this.ClientID, exp)) |> ignore
-       while (!result).IsNone do ()  // This is busy waiting, which isn't allowed - you'll need to fix it.
-       (!result).Value
+    member this.DoExp delay exp =    // You need to write this dick.
+        experimentCompleted <- false
+        let result = ref None
+        if labControlled > -1 // If i control a lab then do it
+            then 
+                prClient clientID "DEBUG" (sprintf "Attempting to do experiment")
+                let currentLab = labs.contents.[labControlled]
+                hLock currentLab <| fun labJob ->
+                    // The continueation function fed into DoExp lab function needs to notifiy the caller of the result
+                    let experimentJob = currentLab.DoExp delay exp clientID (fun res -> result:= Some res; completeExperimentJob) // After the thread that got the lock does its work then it can report its results
+                    // After calling the experiment thread continue with...
+                    labJob <| fun() -> experimentJob; prClient clientID "DEBUG" (sprintf "Ran Experiment, Completed?: %b" experimentCompleted)
+            else 
+                (queueManager.queueForLab 0).Enqueue( enqueuedExperiment(this.ClientID, exp)) |> ignore
+       
+        if experimentCompleted
+            then
+                experimentCompleted <- false
+                prClient clientID "DEBUG" (sprintf "Succeeded at doing experiment")
+                (!result).Value
+            else
+                prClient clientID "DEBUG" (sprintf "Failed at doing experiment")
+                false
+                
+                
+            
+
        
        
        
@@ -610,7 +587,13 @@ let randomTestClient clients clID avgWait avgBusyTime numExp =
 // numExp is the number of experiments
 // numClients is the number of clients and labs?
 // labsRules is the rules for the labs
-let randomTest avgWait avgBusyTime numExp numClients labsRules =
+let randomTest avgWait avgBusyTime numExp numClients (labsRules: labRules list) =
+    prRaw 5 "================================================================="
+    prRaw 5 "Doing Random Test"
+    prRaw 5 (sprintf "Number of Experiments: %d" numExp)
+    prRaw 5 (sprintf "Number of Clients: %d" numClients)
+    prRaw 5 (sprintf "Number of Labs: %d" (labsRules.Length))
+    prRaw 5 "================================================================="
     let clients, _ = mkClientsAndLabs numClients labsRules  // Make clients and labs equal in number with the labsRules
     // For each of the client id's do a randomTestClient 
     doTest [for i in 0..numClients-1 -> randomTestClient clients i avgWait avgBusyTime numExp  ]
@@ -625,6 +608,7 @@ let randomTest avgWait avgBusyTime numExp numClients labsRules =
 //           scheduledClient clients 4 [(400, 200, A)]
 //          ]
 
-
-randomTest 10 50 4 8 [rulesB; rulesB] |> ignore            // A smaller random test.
+randomTest 10 50 4 1 [rulesB] |> ignore
+//randomTest 10 50 4 2 [rulesB; rulesB] |> ignore
+//randomTest 10 50 4 8 [rulesB; rulesB] |> ignore            // A smaller random test.
 //randomTest 5 20 5 20 [rulesA; rulesB; rulesC] |> ignore    // A larger random test.
