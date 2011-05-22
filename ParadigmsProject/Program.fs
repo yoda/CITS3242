@@ -138,7 +138,7 @@ let rec suffices rules (exp1, exp2) =
     unify 
     match rules with
     |[] -> true
-    |x::xs -> 
+    |x::xs -> false
     //false //go through list or something to determine suffices
                 
                 
