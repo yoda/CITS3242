@@ -190,90 +190,82 @@ let rec unify exp1 exp2 sublist =
     | _,_, _ -> None          //A mystery to us all.
 
 
-let unifyTwoRules exp1 exp2 prop1 prop2 = 
-    match unify exp1 prop1 newSubString with
+let unifyTwoRules exp1 exp2 prop1 prop2 sl= 
+    match unify exp1 prop1 sl with
        |None -> None
        |sl -> unify exp2 prop2 sl
 
-let rec checkAllMembers listofthings checkingfunction =
-    match listofthings with
-    |[] -> checkingfunction []
-    |x::xs -> checkingfunction x && checkAllMembers xs checkingfunction
-    
-let isTrue a = (a = true)
+let rec allVariablesAccountedFor proposal substitutions = 
+    match proposal with
+    |Mix(e1,e2) -> allVariablesAccountedFor e1 substitutions && allVariablesAccountedFor e2 substitutions
+    |A|B -> true
+    |Var(x) -> match getAssigned x substitutions with
+        |None -> false
+        |_ -> true
 
-//let rec resolveSubGoals2 rule rules substititionList = 
-//    match rule with
-//            Rule((s1, s2), subgoalList) -> 
-//                match subgoalList with
-//                |[] -> []           //A nice subgoal-less rule. Please sir, may I have some more?
-//                |_ ->                       //Oh alright I'll do some work *grumble grumble*
-//                    [for s1, s2 in subgoalList do
-//                        for r in subgoalList do
-//                            currRule = r()
-//                            match currRule with
-//                            |Rule((r1, r2), subgoalList)
-//                            |_ -> None
-//                        match unifyTwoRules exp1 exp3 exp2 exp4 substitutionList with 
-//                        |Some(sl) -> resolveSubGoals () () ()
-//                        |None(sl) -> () |> ignore
-//                        ]
-
-let rec resolveSubgoals rule rules sublist =  //This is where the work will be done
-    match rule with
-        Rule((exp1, exp2), subGoalList) -> 
-            for r in subGoalList do
-                for u in rules do
-                    ignore false
-                match r with
-                |needed1, needed2 -> false |> ignore
-                |_ -> false |> ignore
-        
-        
-            match unifyTwoRules exp1 exp2 prop1 prop2 with
-                |Some(sl) -> 
-                    prRaw -1 (sprintf "Matched rule %s %s" (exptostring prop1) (exptostring prop2)) |> ignore
-                    resolveSubgoals currRule rules sl 
-                |None -> false |> ignore
-        |_ -> None |> ignore
-
-let rec isAMatch subgoal ruleGen substitutionList rules =
-    r = ruleGen()
-    match subgoal, r with
-    |(s1,s2),Rule((exp1, exp2), subGoalList) -> 
-        match unifyTwoRules s1, exp1, s2, exp2 substitutionList with
-        |Some(sl) -> ignore false
-        |_ -> ignore false
-//    for r in rules do
-//        let currRule = r ()
-//        match subgoal, currRule with
-//        |(exp1, exp2), Rule((prop1, prop2), subGoalList) -> 
-//                match unifyTwoRules exp1 exp2 prop1 prop2 with
-//                |Some(sl) -> 
-//                    prRaw -1 (sprintf "Matched rule %s %s" (exptostring prop1) (exptostring prop2)) |> ignore
-//                |None -> false |> ignore
+let rec suffices2 proposal (rules: ruleGen list) substitutions = 
+    let rec allSucceed ls subs=
+        List.fold (fun acc subgoal -> acc && suffices2 subgoal rules subs) true ls
+    let rec oneSucceed ls = 
+        List.fold (fun acc r -> 
+            match r(), proposal  with
+            |Rule((r1, r2), subgoals),(p1,p2) -> 
+                match unifyTwoRules p1 r1 p2 r2 substitutions with
+                |None -> acc || false
+                |sl ->
+                    match subgoals with
+                    |[] -> true
+                    |_ -> 
+                        if allVariablesAccountedFor p1 (Option.get sl) && allVariablesAccountedFor p2 (Option.get sl) then
+                            true
+                        else
+                            acc || allSucceed subgoals sl//allSucceed subgoals 
+                
+            ) false ls
+    oneSucceed rules 
+//    
+//    for ruleGen in rules do
+//        let rule = ruleGen()
+//        match rule, proposal with
+//        |Rule((r1, r2), subgoals),(p1,p2) -> 
+//            match unify p2 r2 (unify p1 r1 List.Empty) with
+//            |Some(sl) -> true//allSucceed subgoals 
+//            |None -> false
+//        |_ -> false
 
 //Suffices
 let rec suffices (rules : ruleGen list) (exp1, exp2) = 
-    prRaw -1 (sprintf "Suffices Called with %s and %s and subList %O " (exptostring exp1) (exptostring exp2) rules) |> ignore
-    for r in rules do
-        let currRule = r ()
-        match currRule with
-        |Rule((prop1, prop2), subGoalList) -> 
-                match unifyTwoRules exp1 exp2 prop1 prop2 with
-                |Some(sl) -> 
-                    prRaw -1 (sprintf "Matched rule %s %s" (exptostring prop1) (exptostring prop2)) |> ignore
-                    resolveSubgoals currRule rules sl //Wanted to use currRule here but maybe I don't understand how using r() earlier actually worked...
-                |None -> false |> ignore
-        |_ -> None |> ignore
-    false
-//        match r with 
-//        |((prop1, prop2), subs) -> 
-//            match unifyTwoRules exp1 exp2 prop1 prop2 with
-//            |Some(sl) -> 
-//                false |> ignore
-//            |_ -> false |> ignore
+    suffices2 (exp1, exp2) rules (Some(List.empty))
+//    for r in rules do
+//        let currRule = r()
+//        match currRule with
+//        |Rule((prop1, prop2), subGoalList) -> 
+//            match unifyTwoRules exp1 exp2 prop1 prop2 List.empty with
+//            |_ -> true
+//                match unifyTwoRules exp1 exp2 prop1 prop2 List.empty with
+//                |None -> false
+//                |Some(sl) -> 
+//                    prRaw -1 (sprintf "Matched rule %s %s" (exptostring prop1) (exptostring prop2)) |> ignore
+//                    suffices2 currRule rules sl
+//                    //suffices2 currRule rules sl //Wanted to use currRule here but maybe I don't understand how using r() earlier actually worked...
+//                
+//        |_ -> false
+//    suffices2 exp1 rules List.empty
+//    prRaw -1 (sprintf "Suffices Called with %s and %s and subList %O " (exptostring exp1) (exptostring exp2) rules) |> ignore
+//    for r in rules do
+//        let currRule = r ()
+//        match currRule with
+//        |Rule((prop1, prop2), subGoalList) -> 
+//                match unifyTwoRules exp1 exp2 prop1 prop2 List.empty with
+//                |None -> false
+//                |Some(sl) -> 
+//                    prRaw -1 (sprintf "Matched rule %s %s" (exptostring prop1) (exptostring prop2)) |> ignore
+//                    suffices2 currRule rules sl
+//                    //suffices2 currRule rules sl //Wanted to use currRule here but maybe I don't understand how using r() earlier actually worked...
+//                
+//        |_ -> false
 //    false
+
 //Some quick tests
 let noneString = "Substitution is None Type"
 
