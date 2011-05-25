@@ -1,6 +1,6 @@
 ﻿
-Microsoft Visual Studio Solution File, Format Version 11.00
-# Visual Studio 2010
+Microsoft Visual Studio Solution File, Format Version 10.00
+# Visual Studio 2008
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "ParadigmsProject", "ParadigmsProject.fsproj", "{F85E5B53-43BC-4551-9ADD-DFC2163E183A}"
 EndProject
 Global

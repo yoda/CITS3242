@@ -153,47 +153,34 @@ let newSubString = Some(List.empty)
 
 //Unify
 let rec unify exp1 exp2 sublist = 
-//    prRaw -1 (sprintf "Unify Called with %s and %s and subList %O " (exptostring exp1) (exptostring exp2) sublist) |> ignore
     match exp1, exp2, sublist with
     | _,_,None -> 
-//        prRaw -1 (sprintf "_ _ None!!") |> ignore
         None
     | Mix(e1,e2), Mix(e3,e4), s -> 
-//        prRaw -1 (sprintf "mix %s %s and mix %s %s being unified "(exptostring e1) (exptostring e2) (exptostring e3) (exptostring e4)) |> ignore
         unify e2 e4 (unify e1 e3 s)  //Unify the second pair in light of any substitutions in the first pair
     | Var(v1), Var(v2), Some(s) -> 
         let a1 = getAssigned v1 s
         let a2 = getAssigned v2 s
-//        prRaw -1 (sprintf "var %s and var %s being unified " v1 v2) |> ignore
         match a1, a2 with
         | None, Some(a) -> 
-//            prRaw -1 (sprintf "One found in sublist ") |> ignore
             Some(s @ [(v1,a)])  //The second var is in the substitution list, the first one isn't. This means we can assign the second var's mapping to the first var's mapping as well.
         | Some(a), None -> 
-//            prRaw -1 (sprintf "One found in sublist") |> ignore
             Some(s @ [(v2,a)])  //The first var is in the substitution list, the second one isn't. This means we can assign the first var's mapping to the second var's mapping as well.
         | None, None -> 
-//            prRaw -1 (sprintf "Neither found in sublist ") |> ignore
             sublist //Neither var is in the substitution list, so we can resolve it any further, just return the existing mapping.
         | Some(a), Some(aa) ->  //Both vars are in the substitution list. This means that we need to check they have the same mapping, else a problem may have occured earlier.
         
             if a = aa then
-//                prRaw -1 (sprintf "Both found and both are equal ") |> ignore
                 sublist
             else
-//                prRaw -1 (sprintf "Both found and they are different, maybe a bug?") |> ignore
                 None //(Not sure whether this state is reachable or not without a prior bug).
     | e, Var(v), Some(s) | Var(v), e, Some(s) -> //A non var expression and a var
-//        prRaw -1 (sprintf "var %s and exp %O being unified " v e) |> ignore
         let a = getAssigned v s
         match a with
         |None ->
-//            prRaw -1 (sprintf "No match found for %s " v) |> ignore 
             let z = Some(s@[(v,e)])
-//            prRaw -1 (sprintf "%O " z) |> ignore 
             z
         |Some(a) -> 
-//            prRaw -1 (sprintf "Match found for %s " v) |> ignore 
             if e = a then
                 sublist
             else
@@ -208,15 +195,63 @@ let unifyTwoRules exp1 exp2 prop1 prop2 =
        |None -> None
        |sl -> unify exp2 prop2 sl
 
-let rec resolveSubgoals subgoal rules sublist =  //This is where the work will be done
-    for r in rules do
-        let currRule = r ()
-        match subgoal, currRule with
-        |(exp1, exp2), Rule((prop1, prop2), subGoalList) -> 
-                match unifyTwoRules exp1 exp2 prop1 prop2 with
+let rec checkAllMembers listofthings checkingfunction =
+    match listofthings with
+    |[] -> checkingfunction []
+    |x::xs -> checkingfunction x && checkAllMembers xs checkingFunction
+    
+let isTrue a = a == true
+
+let rec resolveSubGoals2 rule rules substititionList = 
+    match rule with
+            Rule((s1, s2), subgoalList) -> 
+                match subGoalList with
+                |[] -> yield true           //A nice subgoal-less rule. Please sir, may I have some more?
+                |_ ->                       //Oh alright I'll do some work *grumble grumble*
+                    [for s1, s2 in subgoalList do
+                        for r in rule do
+                            currRule = r()
+                            match currRule with
+                            |Rule((r1, r2), subGoalList)
+                            |_ -> None
+                        match unifyTwoRules exp1 exp3 exp2 exp4 substitutionList with 
+                        |Some(sl) -> resolveSubGoals 
+                        |None(sl) -> () |> ignore
+                        ]
+
+let rec resolveSubgoals rule rules sublist =  //This is where the work will be done
+    match rule with
+        Rule((exp1, exp2), subGoalList) -> 
+            for r in subGoalList do
+                for u in rules do
+                    match
+                match r with
+                    needed1, needed2 -> 
+                    _ -> false |> ignore
+        
+        
+            match unifyTwoRules exp1 exp2 prop1 prop2 with
                 |Some(sl) -> 
                     prRaw -1 (sprintf "Matched rule %s %s" (exptostring prop1) (exptostring prop2)) |> ignore
+                    resolveSubgoals currRule rules sl 
                 |None -> false |> ignore
+        |_ -> None |> ignore
+
+let rec isAMatch subgoal ruleGen substitutionList rules =
+    r = ruleGen()
+    match subgoal, r with
+    |(s1,s2),Rule((exp1, exp2), subGoalList) -> 
+        match unifyTwoRules s1, exp1, s2, exp2 substitutionList with
+        |Some(sl) ->
+        |_
+//    for r in rules do
+//        let currRule = r ()
+//        match subgoal, currRule with
+//        |(exp1, exp2), Rule((prop1, prop2), subGoalList) -> 
+//                match unifyTwoRules exp1 exp2 prop1 prop2 with
+//                |Some(sl) -> 
+//                    prRaw -1 (sprintf "Matched rule %s %s" (exptostring prop1) (exptostring prop2)) |> ignore
+//                |None -> false |> ignore
 
 //Suffices
 let rec suffices (rules : ruleGen list) (exp1, exp2) = 
@@ -228,6 +263,7 @@ let rec suffices (rules : ruleGen list) (exp1, exp2) =
                 match unifyTwoRules exp1 exp2 prop1 prop2 with
                 |Some(sl) -> 
                     prRaw -1 (sprintf "Matched rule %s %s" (exptostring prop1) (exptostring prop2)) |> ignore
+                    resolveSubgoals currRule rules sl //Wanted to use currRule here but maybe I don't understand how using r() earlier actually worked...
                 |None -> false |> ignore
         |_ -> None |> ignore
     false
