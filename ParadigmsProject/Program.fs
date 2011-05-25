@@ -198,36 +198,36 @@ let unifyTwoRules exp1 exp2 prop1 prop2 =
 let rec checkAllMembers listofthings checkingfunction =
     match listofthings with
     |[] -> checkingfunction []
-    |x::xs -> checkingfunction x && checkAllMembers xs checkingFunction
+    |x::xs -> checkingfunction x && checkAllMembers xs checkingfunction
     
-let isTrue a = a == true
+let isTrue a = (a = true)
 
-let rec resolveSubGoals2 rule rules substititionList = 
-    match rule with
-            Rule((s1, s2), subgoalList) -> 
-                match subGoalList with
-                |[] -> yield true           //A nice subgoal-less rule. Please sir, may I have some more?
-                |_ ->                       //Oh alright I'll do some work *grumble grumble*
-                    [for s1, s2 in subgoalList do
-                        for r in rule do
-                            currRule = r()
-                            match currRule with
-                            |Rule((r1, r2), subGoalList)
-                            |_ -> None
-                        match unifyTwoRules exp1 exp3 exp2 exp4 substitutionList with 
-                        |Some(sl) -> resolveSubGoals 
-                        |None(sl) -> () |> ignore
-                        ]
+//let rec resolveSubGoals2 rule rules substititionList = 
+//    match rule with
+//            Rule((s1, s2), subgoalList) -> 
+//                match subgoalList with
+//                |[] -> []           //A nice subgoal-less rule. Please sir, may I have some more?
+//                |_ ->                       //Oh alright I'll do some work *grumble grumble*
+//                    [for s1, s2 in subgoalList do
+//                        for r in subgoalList do
+//                            currRule = r()
+//                            match currRule with
+//                            |Rule((r1, r2), subgoalList)
+//                            |_ -> None
+//                        match unifyTwoRules exp1 exp3 exp2 exp4 substitutionList with 
+//                        |Some(sl) -> resolveSubGoals () () ()
+//                        |None(sl) -> () |> ignore
+//                        ]
 
 let rec resolveSubgoals rule rules sublist =  //This is where the work will be done
     match rule with
         Rule((exp1, exp2), subGoalList) -> 
             for r in subGoalList do
                 for u in rules do
-                    match
+                    ignore false
                 match r with
-                    needed1, needed2 -> 
-                    _ -> false |> ignore
+                |needed1, needed2 -> false |> ignore
+                |_ -> false |> ignore
         
         
             match unifyTwoRules exp1 exp2 prop1 prop2 with
@@ -242,8 +242,8 @@ let rec isAMatch subgoal ruleGen substitutionList rules =
     match subgoal, r with
     |(s1,s2),Rule((exp1, exp2), subGoalList) -> 
         match unifyTwoRules s1, exp1, s2, exp2 substitutionList with
-        |Some(sl) ->
-        |_
+        |Some(sl) -> ignore false
+        |_ -> ignore false
 //    for r in rules do
 //        let currRule = r ()
 //        match subgoal, currRule with
