@@ -203,14 +203,17 @@ let rec allVariablesAccountedFor proposal substitutions =
         |None -> false
         |_ -> true
 
-let rec suffices2 proposal (rules: ruleGen list) substitutions = 
+
+
+let rec suffices2 (p1,p2) (rules: ruleGen list) substitutions = 
+    prRaw -1 (sprintf "Suffic2ing %s %s" (exptostring p1) (exptostring p2)) |> ignore
     let rec allSucceed ls subs=
         List.fold (fun acc subgoal -> acc && suffices2 subgoal rules subs) true ls
     let rec oneSucceed ls = 
         List.fold (fun acc r -> 
-            match r(), proposal  with
-            |Rule((r1, r2), subgoals),(p1,p2) -> 
-                match unifyTwoRules p1 r1 p2 r2 substitutions with
+            match r()  with
+            |Rule((r1, r2), subgoals) -> 
+                match unifyTwoRules p1 p2 r1 r2 substitutions with
                 |None -> acc || false
                 |sl ->
                     match subgoals with
@@ -220,7 +223,6 @@ let rec suffices2 proposal (rules: ruleGen list) substitutions =
                             true
                         else
                             acc || allSucceed subgoals sl//allSucceed subgoals 
-                
             ) false ls
     oneSucceed rules 
 //    
@@ -235,6 +237,7 @@ let rec suffices2 proposal (rules: ruleGen list) substitutions =
 
 //Suffices
 let rec suffices (rules : ruleGen list) (exp1, exp2) = 
+    prRaw -1 (sprintf "Sufficing %s %s" (exptostring exp1) (exptostring exp2)) |> ignore
     suffices2 (exp1, exp2) rules (Some(List.empty))
 //    for r in rules do
 //        let currRule = r()
@@ -277,6 +280,25 @@ let rec printSubList sl intendedresult =
         [for v, a in sl ->prRaw -1  (sprintf "Entry %s -> %s" v (mapParticleToString a)) ] |> ignore
         prRaw -1 (sprintf "End of Substitution List\nIntended Result:\n%s \n" intendedresult)
         
+//Test allVariables accounted for
+prRaw -1 (sprintf "allVariablesAccountedFor A [(\"a\", A)] %b" (allVariablesAccountedFor (A) [("a", A)])) |> ignore
+prRaw -1 (sprintf "allVariablesAccountedFor Var(x) %b" (allVariablesAccountedFor (Var("x")) [])) |> ignore
+prRaw -1 (sprintf "allVariablesAccountedFor Var(x) [(Var(\"x\"), B)] %b" (allVariablesAccountedFor (Var("x")) [("x", B)])) |> ignore
+prRaw -1 (sprintf "allVariablesAccountedFor Mix(Var(x),A) [(Var(\"x\"), B)] %b" (allVariablesAccountedFor (Mix(Var("x"),A)) [("x", B)])) |> ignore
+prRaw -1 (sprintf "allVariablesAccountedFor Mix(Var(x),A) [(Var(\"y\"), B)] %b" (allVariablesAccountedFor (Mix(Var("x"),A)) [("y", B)])) |> ignore
+prRaw -1 (sprintf "allVariablesAccountedFor Var(x) [Var(x),(Mix(A,B))] %b" (allVariablesAccountedFor (Var("x")) [("x", Mix(A,B))])) |> ignore
+
+prRaw -1 (sprintf "unifyTwoRules A B A B []")|> ignore
+printSubList (unifyTwoRules A B A B (Some([]))) "Empty SubList"
+prRaw -1 (sprintf "unifyTwoRules A B x B []")|> ignore
+printSubList (unifyTwoRules A B (Var("x")) B (Some([]))) "x->A"
+prRaw -1 (sprintf "unifyTwoRules A B A x []")|> ignore
+printSubList (unifyTwoRules A B A (Var("x")) (Some([]))) "x->B"
+prRaw -1 (sprintf "unifyTwoRules A B B B []")|> ignore
+printSubList (unifyTwoRules A B B B (Some([]))) noneString
+prRaw -1 (sprintf "unifyTwoRules A Mix(A,B) A x []")|> ignore
+printSubList (unifyTwoRules A (Mix(A,B)) A (Var("x")) (Some([]))) "x->Mix(A,B)"    
+
 //printSubList (unify (Mix(A, B)) (Mix(B, A)) (Some(List.empty))) noneString |> ignore //Simple test Works 
 //printSubList (unify (Var("a")) (A) (Some(List.empty))) "Entry a -> A"|> ignore //Simple test with variable assignment Works (true)
 //printSubList (unify (Var("a")) (A) (Some([("b", B)]))) "Entry b -> B\nEntry a -> A"|> ignore //Simple test with irrelevant variable assignemnt Works (true)
@@ -386,15 +408,15 @@ let rulesC = [rule4; rule5; rule9; rule10; rule11; rule12]         // Rules 9,10
                                                                    // Focus on rules like the others first.
 let prTest pre res = pr0 (pre + " = ") res |> ignore
 
-suffices [rule1] (A, A) |> prTest "suffices [rule1] (A, A)" 
-suffices [rule1] (A, B) |> prTest "suffices [rule1] (A, B)" 
+suffices [rule1] (A, A) |> prTest "suffices [rule1] (A, A) should be true" 
+suffices [rule1] (A, B) |> prTest "suffices [rule1] (A, B) should be false" 
 prRaw 0 "\n"
 
-suffices rulesA (A, B) |> prTest "suffices rulesA (A, B)"
-suffices rulesA (Mix (A, B), A) |> prTest "suffices rulesA (Mix (A, B),A)"
+suffices rulesA (A, B) |> prTest "suffices rulesA (A, B) should be false"
+suffices rulesA (Mix (A, B), A) |> prTest "suffices rulesA (Mix (A, B),A) should be true"
 
-suffices rulesA (Mix (Mix (A, B), B),A) |> prTest "suffices rulesA (Mix (Mix (A, B), B),A)"
-suffices rulesA (Mix (Mix (B, B), B),A) |> prTest "suffices rulesA (Mix (Mix (B, B), B),A)"
+suffices rulesA (Mix (Mix (A, B), B),A) |> prTest "suffices rulesA (Mix (Mix (A, B), B),A) should be true"
+suffices rulesA (Mix (Mix (B, B), B),A) |> prTest "suffices rulesA (Mix (Mix (B, B), B),A) should be false"
 suffices rulesA (Mix (Mix (B, B), B), Mix (B, B)) |> prTest "suffices rulesA (Mix (Mix (B, B), B), Mix (B, B))"
 suffices rulesA (Mix (Mix (A, B), B), Mix (B, A)) |> prTest "suffices rulesA (Mix (Mix (A, B), B), Mix (B, A))"
 prRaw 0 "\n"
