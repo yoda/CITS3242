@@ -153,47 +153,34 @@ let newSubString = Some(List.empty)
 
 //Unify
 let rec unify exp1 exp2 sublist = 
-//    prRaw -1 (sprintf "Unify Called with %s and %s and subList %O " (exptostring exp1) (exptostring exp2) sublist) |> ignore
     match exp1, exp2, sublist with
     | _,_,None -> 
-//        prRaw -1 (sprintf "_ _ None!!") |> ignore
         None
     | Mix(e1,e2), Mix(e3,e4), s -> 
-//        prRaw -1 (sprintf "mix %s %s and mix %s %s being unified "(exptostring e1) (exptostring e2) (exptostring e3) (exptostring e4)) |> ignore
         unify e2 e4 (unify e1 e3 s)  //Unify the second pair in light of any substitutions in the first pair
     | Var(v1), Var(v2), Some(s) -> 
         let a1 = getAssigned v1 s
         let a2 = getAssigned v2 s
-//        prRaw -1 (sprintf "var %s and var %s being unified " v1 v2) |> ignore
         match a1, a2 with
         | None, Some(a) -> 
-//            prRaw -1 (sprintf "One found in sublist ") |> ignore
             Some(s @ [(v1,a)])  //The second var is in the substitution list, the first one isn't. This means we can assign the second var's mapping to the first var's mapping as well.
         | Some(a), None -> 
-//            prRaw -1 (sprintf "One found in sublist") |> ignore
             Some(s @ [(v2,a)])  //The first var is in the substitution list, the second one isn't. This means we can assign the first var's mapping to the second var's mapping as well.
         | None, None -> 
-//            prRaw -1 (sprintf "Neither found in sublist ") |> ignore
             sublist //Neither var is in the substitution list, so we can resolve it any further, just return the existing mapping.
         | Some(a), Some(aa) ->  //Both vars are in the substitution list. This means that we need to check they have the same mapping, else a problem may have occured earlier.
         
             if a = aa then
-//                prRaw -1 (sprintf "Both found and both are equal ") |> ignore
                 sublist
             else
-//                prRaw -1 (sprintf "Both found and they are different, maybe a bug?") |> ignore
                 None //(Not sure whether this state is reachable or not without a prior bug).
     | e, Var(v), Some(s) | Var(v), e, Some(s) -> //A non var expression and a var
-//        prRaw -1 (sprintf "var %s and exp %O being unified " v e) |> ignore
         let a = getAssigned v s
         match a with
         |None ->
-//            prRaw -1 (sprintf "No match found for %s " v) |> ignore 
             let z = Some(s@[(v,e)])
-//            prRaw -1 (sprintf "%O " z) |> ignore 
             z
         |Some(a) -> 
-//            prRaw -1 (sprintf "Match found for %s " v) |> ignore 
             if e = a then
                 sublist
             else
@@ -203,41 +190,85 @@ let rec unify exp1 exp2 sublist =
     | _,_, _ -> None          //A mystery to us all.
 
 
-let unifyTwoRules exp1 exp2 prop1 prop2 = 
-    match unify exp1 prop1 newSubString with
+let unifyTwoRules exp1 exp2 prop1 prop2 sl= 
+    match unify exp1 prop1 sl with
        |None -> None
        |sl -> unify exp2 prop2 sl
 
-let rec resolveSubgoals subgoal rules sublist =  //This is where the work will be done
-    for r in rules do
-        let currRule = r ()
-        match subgoal, currRule with
-        |(exp1, exp2), Rule((prop1, prop2), subGoalList) -> 
-                match unifyTwoRules exp1 exp2 prop1 prop2 with
-                |Some(sl) -> 
-                    prRaw -1 (sprintf "Matched rule %s %s" (exptostring prop1) (exptostring prop2)) |> ignore
-                |None -> false |> ignore
+let rec allVariablesAccountedFor proposal substitutions = 
+    match proposal with
+    |Mix(e1,e2) -> allVariablesAccountedFor e1 substitutions && allVariablesAccountedFor e2 substitutions
+    |A|B -> true
+    |Var(x) -> match getAssigned x substitutions with
+        |None -> false
+        |_ -> true
+
+
+
+let rec suffices2 (p1,p2) (rules: ruleGen list) substitutions = 
+    prRaw -1 (sprintf "Suffic2ing %s %s" (exptostring p1) (exptostring p2)) |> ignore
+    let rec allSucceed ls subs=
+        List.fold (fun acc subgoal -> acc && suffices2 subgoal rules subs) true ls
+    let rec oneSucceed ls = 
+        List.fold (fun acc r -> 
+            match r()  with
+            |Rule((r1, r2), subgoals) -> 
+                match unifyTwoRules p1 p2 r1 r2 substitutions with
+                |None -> acc || false
+                |sl ->
+                    match subgoals with
+                    |[] -> true
+                    |_ -> 
+                        if allVariablesAccountedFor p1 (Option.get sl) && allVariablesAccountedFor p2 (Option.get sl) then
+                            true
+                        else
+                            acc || allSucceed subgoals sl//allSucceed subgoals 
+            ) false ls
+    oneSucceed rules 
+//    
+//    for ruleGen in rules do
+//        let rule = ruleGen()
+//        match rule, proposal with
+//        |Rule((r1, r2), subgoals),(p1,p2) -> 
+//            match unify p2 r2 (unify p1 r1 List.Empty) with
+//            |Some(sl) -> true//allSucceed subgoals 
+//            |None -> false
+//        |_ -> false
 
 //Suffices
 let rec suffices (rules : ruleGen list) (exp1, exp2) = 
-    prRaw -1 (sprintf "Suffices Called with %s and %s and subList %O " (exptostring exp1) (exptostring exp2) rules) |> ignore
-    for r in rules do
-        let currRule = r ()
-        match currRule with
-        |Rule((prop1, prop2), subGoalList) -> 
-                match unifyTwoRules exp1 exp2 prop1 prop2 with
-                |Some(sl) -> 
-                    prRaw -1 (sprintf "Matched rule %s %s" (exptostring prop1) (exptostring prop2)) |> ignore
-                |None -> false |> ignore
-        |_ -> None |> ignore
-    false
-//        match r with 
-//        |((prop1, prop2), subs) -> 
-//            match unifyTwoRules exp1 exp2 prop1 prop2 with
-//            |Some(sl) -> 
-//                false |> ignore
-//            |_ -> false |> ignore
+    prRaw -1 (sprintf "Sufficing %s %s" (exptostring exp1) (exptostring exp2)) |> ignore
+    suffices2 (exp1, exp2) rules (Some(List.empty))
+//    for r in rules do
+//        let currRule = r()
+//        match currRule with
+//        |Rule((prop1, prop2), subGoalList) -> 
+//            match unifyTwoRules exp1 exp2 prop1 prop2 List.empty with
+//            |_ -> true
+//                match unifyTwoRules exp1 exp2 prop1 prop2 List.empty with
+//                |None -> false
+//                |Some(sl) -> 
+//                    prRaw -1 (sprintf "Matched rule %s %s" (exptostring prop1) (exptostring prop2)) |> ignore
+//                    suffices2 currRule rules sl
+//                    //suffices2 currRule rules sl //Wanted to use currRule here but maybe I don't understand how using r() earlier actually worked...
+//                
+//        |_ -> false
+//    suffices2 exp1 rules List.empty
+//    prRaw -1 (sprintf "Suffices Called with %s and %s and subList %O " (exptostring exp1) (exptostring exp2) rules) |> ignore
+//    for r in rules do
+//        let currRule = r ()
+//        match currRule with
+//        |Rule((prop1, prop2), subGoalList) -> 
+//                match unifyTwoRules exp1 exp2 prop1 prop2 List.empty with
+//                |None -> false
+//                |Some(sl) -> 
+//                    prRaw -1 (sprintf "Matched rule %s %s" (exptostring prop1) (exptostring prop2)) |> ignore
+//                    suffices2 currRule rules sl
+//                    //suffices2 currRule rules sl //Wanted to use currRule here but maybe I don't understand how using r() earlier actually worked...
+//                
+//        |_ -> false
 //    false
+
 //Some quick tests
 let noneString = "Substitution is None Type"
 
@@ -249,6 +280,25 @@ let rec printSubList sl intendedresult =
         [for v, a in sl ->prRaw -1  (sprintf "Entry %s -> %s" v (mapParticleToString a)) ] |> ignore
         prRaw -1 (sprintf "End of Substitution List\nIntended Result:\n%s \n" intendedresult)
         
+//Test allVariables accounted for
+prRaw -1 (sprintf "allVariablesAccountedFor A [(\"a\", A)] %b" (allVariablesAccountedFor (A) [("a", A)])) |> ignore
+prRaw -1 (sprintf "allVariablesAccountedFor Var(x) %b" (allVariablesAccountedFor (Var("x")) [])) |> ignore
+prRaw -1 (sprintf "allVariablesAccountedFor Var(x) [(Var(\"x\"), B)] %b" (allVariablesAccountedFor (Var("x")) [("x", B)])) |> ignore
+prRaw -1 (sprintf "allVariablesAccountedFor Mix(Var(x),A) [(Var(\"x\"), B)] %b" (allVariablesAccountedFor (Mix(Var("x"),A)) [("x", B)])) |> ignore
+prRaw -1 (sprintf "allVariablesAccountedFor Mix(Var(x),A) [(Var(\"y\"), B)] %b" (allVariablesAccountedFor (Mix(Var("x"),A)) [("y", B)])) |> ignore
+prRaw -1 (sprintf "allVariablesAccountedFor Var(x) [Var(x),(Mix(A,B))] %b" (allVariablesAccountedFor (Var("x")) [("x", Mix(A,B))])) |> ignore
+
+prRaw -1 (sprintf "unifyTwoRules A B A B []")|> ignore
+printSubList (unifyTwoRules A B A B (Some([]))) "Empty SubList"
+prRaw -1 (sprintf "unifyTwoRules A B x B []")|> ignore
+printSubList (unifyTwoRules A B (Var("x")) B (Some([]))) "x->A"
+prRaw -1 (sprintf "unifyTwoRules A B A x []")|> ignore
+printSubList (unifyTwoRules A B A (Var("x")) (Some([]))) "x->B"
+prRaw -1 (sprintf "unifyTwoRules A B B B []")|> ignore
+printSubList (unifyTwoRules A B B B (Some([]))) noneString
+prRaw -1 (sprintf "unifyTwoRules A Mix(A,B) A x []")|> ignore
+printSubList (unifyTwoRules A (Mix(A,B)) A (Var("x")) (Some([]))) "x->Mix(A,B)"    
+
 //printSubList (unify (Mix(A, B)) (Mix(B, A)) (Some(List.empty))) noneString |> ignore //Simple test Works 
 //printSubList (unify (Var("a")) (A) (Some(List.empty))) "Entry a -> A"|> ignore //Simple test with variable assignment Works (true)
 //printSubList (unify (Var("a")) (A) (Some([("b", B)]))) "Entry b -> B\nEntry a -> A"|> ignore //Simple test with irrelevant variable assignemnt Works (true)
@@ -358,15 +408,15 @@ let rulesC = [rule4; rule5; rule9; rule10; rule11; rule12]         // Rules 9,10
                                                                    // Focus on rules like the others first.
 let prTest pre res = pr0 (pre + " = ") res |> ignore
 
-suffices [rule1] (A, A) |> prTest "suffices [rule1] (A, A)" 
-suffices [rule1] (A, B) |> prTest "suffices [rule1] (A, B)" 
+suffices [rule1] (A, A) |> prTest "suffices [rule1] (A, A) should be true" 
+suffices [rule1] (A, B) |> prTest "suffices [rule1] (A, B) should be false" 
 prRaw 0 "\n"
 
-suffices rulesA (A, B) |> prTest "suffices rulesA (A, B)"
-suffices rulesA (Mix (A, B), A) |> prTest "suffices rulesA (Mix (A, B),A)"
+suffices rulesA (A, B) |> prTest "suffices rulesA (A, B) should be false"
+suffices rulesA (Mix (A, B), A) |> prTest "suffices rulesA (Mix (A, B),A) should be true"
 
-suffices rulesA (Mix (Mix (A, B), B),A) |> prTest "suffices rulesA (Mix (Mix (A, B), B),A)"
-suffices rulesA (Mix (Mix (B, B), B),A) |> prTest "suffices rulesA (Mix (Mix (B, B), B),A)"
+suffices rulesA (Mix (Mix (A, B), B),A) |> prTest "suffices rulesA (Mix (Mix (A, B), B),A) should be true"
+suffices rulesA (Mix (Mix (B, B), B),A) |> prTest "suffices rulesA (Mix (Mix (B, B), B),A) should be false"
 suffices rulesA (Mix (Mix (B, B), B), Mix (B, B)) |> prTest "suffices rulesA (Mix (Mix (B, B), B), Mix (B, B))"
 suffices rulesA (Mix (Mix (A, B), B), Mix (B, A)) |> prTest "suffices rulesA (Mix (Mix (A, B), B), Mix (B, A))"
 prRaw 0 "\n"
