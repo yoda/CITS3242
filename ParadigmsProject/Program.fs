@@ -520,6 +520,9 @@ type labQueueMan (numQueues) =
     do printfn "Creating labQueueMan for %d labs" numQueues
     member this.getQueues = !labQueues
     member this.queueForLab labID = [for lq in labQueues.contents do if lq.LabID = labID then yield lq].Head // Can only ever be 1
+
+
+    
     
 prRaw 5 "Queue Tests"
 prRaw 5 "Using 5 labs"
@@ -611,42 +614,6 @@ type client (clientID, numLabs) =
             )        
         ()
 
-    //enqueuedExperiment(this.ClientID, exp, delay)
-    // DECENTRALISED CLIENT : Commit Experiment 
-    // This will be called when a scientist calls the DoExp on his/her client in order to do an experiment.
-    // The methodology is:
-    // Figure out who has the labs and update the coordinates. 
-    // Check if there are any empty labs if so start using that lab. (Branch to become a lab runner) #TODO Currently just picks a random lab thats active and enqueues there.
-    // If there are no free labs get the queues of all active labs run by clients (that was just updated).
-    // Check whether your experiment can be unified into a queue.
-    // If it can select that lab queue.
-    // Ask the client currently running that queue to enqueue your experiment.
-    // Finish until notified of a result. 
-    member this.CommitExperiment exp delay =
-        // For each lab last known lab coordinate ask the client that was using it whether they still own it, if they dont
-        // then ask who they think does until one finds who has the lab. After doing this for all labs, this is the 
-        // updated lab coordinate array while still fullfilling requirement 4.
-        let lastKnownCoord = [|for labIndex in [0..(lastKnownCoord.Length - 1)] do 
-                                let cid = lastKnownCoord.[labIndex]
-                                let clientWhoOwnsLab = getCurrentLabOwner cid labIndex lastKnownCoord
-                                yield clientWhoOwnsLab |]
-        let selectedLab = (random lastKnownCoord.Length) - 1 // Currently just randomly pick a lab
-        ()
-        // Should also select based on the least active lab ( shortest queue ) #Todo
-
-        // Update our queue for the selected lab with the lastKnown lab owner's (current) queue.
-        // queueManager.queueForLab(selectedLab).enqueuedExperiments := (clients.Value.[lastKnownCoord.[selectedLab]].getQueueForLab selectedLab).enqueuedExperiments.Value
-
-        // Enqueue the experiment.
-        //(clients.Value.[lastKnownCoord.[selectedLab]]).EnqueueExperiment(enqueuedExperiment(this.ClientID, exp, delay), selectedLab)
-
-    
-    // DECENTRALISED SERVER : Conduct Experiment
-    // This is called by the previous server once they complete their experiment. They pass the queue that they were managing
-    // to this client becoming a server where this client is the front of the queue. 
-    member this.ConductExperiment queueForLab =
-        ()
-    
 
     member this.getLabQueueInformation clid labid =
         if this.ownsLab labid then
@@ -663,15 +630,14 @@ type client (clientID, numLabs) =
             // e.g. proxy/forward this request on
             )        
         ()
-
-    member this.queueJob =
-        ()
-    
     
    
     // This will be called each time a scientist on this host wants to submit an experiment.
     member this.DoExp delay exp =    // You need to write this dick.
         let result = ref None
+
+        
+        
         ()
 
                                                          
