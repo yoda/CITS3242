@@ -450,17 +450,16 @@ let hLock obj f = let onUnlock = ref (fun() -> ())
 // LabN Queue [_,_,_,_,_]
 
 // An enqueued experiment
-type enqueuedExperiment (clientID, exp) =
+type enqueuedExperiment (clientID, exp, delay) =
     member this.ClientID = clientID
+    member this.Delay = delay
     member this.Experiment = exp
     member this.Timestamp = DateTime.Now
 
 // Queue for a particular lab
 type labQueue (labID) =
-    let enqueuedExperiments:enqueuedExperiment list ref = ref List.empty
+    member this.enqueuedExperiments:enqueuedExperiment Queue ref = ref (Queue ())
     member this.LabID = labID
-    member this.Enqueue exp = enqueuedExperiments := List.append !enqueuedExperiments [exp] // Takes in an enqueuedExperiment
-    member this.getQueue = enqueuedExperiments
 
 // Queue manager
 type labQueueMan (numQueues) = 
@@ -514,42 +513,107 @@ type client (clientID, numLabs) =
     let isFreeLab:bool = Array.exists (fun lkc -> lkc < 0) lastKnownCoord
     let getFreeLab:labID = if isFreeLab then Array.get [|for x in lastKnownCoord do if x < 0 then yield x|] 0 else -1
     let mutable labControlled = -1 // -1 is I dont control a lab
-    let mutable experimentCompleted = false
+    let mutable experimentCompleted = true // Start in completed state
 
-    let completeExperimentJob = experimentCompleted <- true
+    let completeExperimentJob = experimentCompleted <- not experimentCompleted
     
+    // Recursively call a client asking whether it owns the lab your looking for and if it doesnt ask it who they
+    // think had it last. Once you have asked everyone in the path then return that client id
+    let rec getCurrentLabOwner (cid:int) (lid:int) (foreignLastKnownCoord:int[]) =
+        if clients.Value.[cid].ownsLab lid then
+            cid
+        else
+            let nextForeignLastKnownCoord:int[] = clients.Value.[cid].getLastKnownCoord
+            getCurrentLabOwner nextForeignLastKnownCoord.[lid] lid nextForeignLastKnownCoord
+            
+        
 
     do printfn "Last known coords"
     do lastKnownCoord |> Array.iter (fun lkc -> (printfn "%d is in a lab" lkc))
     member this.ClientID = clientID  // So other clients can find our ID easily
+    member this.getLastKnownCoord = lastKnownCoord
+    member this.getQueueForLab labid = queueManager.queueForLab labid
+    member this.ownsLab labid = false
     member this.InitClients theClients theLabs =  clients:=theClients; labs:=theLabs; labControlled <- if ((Array.length !labs) - 1) < clientID then -1 else clientID 
+
+    member this.AcceptExperiment exp =
+        ()
+
+    // DECENTRALISED CLIENT : Commit Experiment 
+    // This will be called when a scientist calls the DoExp on his/her client in order to do an experiment.
+    // The methodology is:
+    // Figure out who has the labs and update the coordinates. 
+    // Check if there are any empty labs if so start using that lab. (Branch to become a lab runner) #TODO Currently just picks a random lab thats active and enqueues there.
+    // If there are no free labs get the queues of all active labs run by clients (that was just updated).
+    // Check whether your experiment can be unified into a queue.
+    // If it can select that lab queue.
+    // Ask the client currently running that queue to enqueue your experiment.
+    // Finish until notified of a result. 
+    member this.CommitExperiment exp delay =
+        // For each lab last known lab coordinate ask the client that was using it whether they still own it, if they dont
+        // then ask who they think does until one finds who has the lab. After doing this for all labs, this is the 
+        // updated lab coordinate array while still fullfilling requirement 4.
+        let lastKnownCoord = [|for labIndex in [0..(lastKnownCoord.Length - 1)] do 
+                                let cid = lastKnownCoord.[labIndex]
+                                let clientWhoOwnsLab = getCurrentLabOwner cid labIndex lastKnownCoord
+                                yield clientWhoOwnsLab |]
+        let selectedLab = (random lastKnownCoord.Length) - 1 // Currently just randomly pick a lab
+        // Should also select based on the least active lab ( shortest queue ) #Todo
+
+        // Update our queue for the selected lab with the lastKnown lab owner's (current) queue.
+        // queueManager.queueForLab(selectedLab).enqueuedExperiments := (clients.Value.[lastKnownCoord.[selectedLab]].getQueueForLab selectedLab).enqueuedExperiments.Value
+
+        // Enqueue the experiment.
+        (clients.Value.[lastKnownCoord.[selectedLab]]).AcceptExperiment(enqueuedExperiment(this.ClientID, exp, delay))
+
+        false
+    
+    
     
     
    
     // This will be called each time a scientist on this host wants to submit an experiment.
     member this.DoExp delay exp =    // You need to write this dick.
-        experimentCompleted <- false
+        
         let result = ref None
+        /// Make a named thread that runs f
+//let mkThread name f = Thread (ThreadStart f, Name=name)
+/// Make a named thread and start it immediately
+//let startThread name f = (mkThread name f).Start()
+
+                                                         
+        
         if labControlled > -1 // If i control a lab then do it
             then 
                 prClient clientID "DEBUG" (sprintf "Attempting to do experiment")
                 let currentLab = labs.contents.[labControlled]
-                hLock currentLab <| fun labJob ->
-                    // The continueation function fed into DoExp lab function needs to notifiy the caller of the result
-                    let experimentJob = currentLab.DoExp delay exp clientID (fun res -> result:= Some res; completeExperimentJob) // After the thread that got the lock does its work then it can report its results
-                    // After calling the experiment thread continue with...
-                    labJob <| fun() -> experimentJob; prClient clientID "DEBUG" (sprintf "Ran Experiment, Completed?: %b" experimentCompleted)
-            else 
-                (queueManager.queueForLab 0).Enqueue( enqueuedExperiment(this.ClientID, exp)) |> ignore
-       
-        if experimentCompleted
-            then
-                experimentCompleted <- false
-                prClient clientID "DEBUG" (sprintf "Succeeded at doing experiment")
-                (!result).Value
+                // The continueation function fed into DoExp lab function needs to notifiy the caller of the result
+                let experimentJob = currentLab.DoExp delay exp clientID (fun res -> result:= (Some res); prClient clientID "DEBUG" (sprintf "Continuation result: %b" res)) // After the thread that got the lock does its work then it can report its results
+                // After calling the experiment thread continue with...
+                
+                
+                experimentJob
+                lock result <| fun() -> while(result.Value.IsNone) do 
+                                            prClient clientID "DEBUG" (sprintf "Waiting for result")
+                                            waitFor result
+                                        prClient clientID "DEBUG" (sprintf "Result changed waking everyone")
+                                        experimentCompleted <- true
+                                        wakeWaiters result
+
             else
-                prClient clientID "DEBUG" (sprintf "Failed at doing experiment")
-                false
+                
+                prClient clientID "DEBUG" (sprintf "Enqueued Experiment")
+                (queueManager.queueForLab 0).enqueuedExperiments.Value.Enqueue( enqueuedExperiment(this.ClientID, exp, delay)) |> ignore
+       
+        while(true) do
+            if experimentCompleted
+                then
+                    experimentCompleted <- false
+                    prClient clientID "DEBUG" (sprintf "Succeeded at doing experiment")
+                    (!result).Value
+                else
+                    prClient clientID "DEBUG" (sprintf "Failed at doing experiment")
+                    false
                 
                 
             
