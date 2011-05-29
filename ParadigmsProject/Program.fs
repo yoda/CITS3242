@@ -550,17 +550,19 @@ let hLock obj f = let onUnlock = ref (fun() -> ())
 // LabN Queue [_,_,_,_,_]
 
 // An enqueued experiment
-type enqueuedExperiment (clientID, exp) =
+type asyncExperiment (clientID, exp, delay) =
     member this.ClientID = clientID
+    member this.Delay = delay
     member this.Experiment = exp
     member this.Timestamp = DateTime.Now
 
 // Queue for a particular lab
 type labQueue (labID) =
-    let enqueuedExperiments:enqueuedExperiment list ref = ref List.empty
+    let mutable queuelength = 0
+    member this.enqueuedExperiments:asyncExperiment Queue ref = ref (Queue ())
     member this.LabID = labID
-    member this.Enqueue exp = enqueuedExperiments := List.append !enqueuedExperiments [exp] // Takes in an enqueuedExperiment
-    member this.getQueue = enqueuedExperiments
+    member this.getQueueLength = queuelength
+    member this.setQueueLength len = queuelength <- len
 
 // Queue manager
 type labQueueMan (numQueues) = 
@@ -568,6 +570,9 @@ type labQueueMan (numQueues) =
     do printfn "Creating labQueueMan for %d labs" numQueues
     member this.getQueues = !labQueues
     member this.queueForLab labID = [for lq in labQueues.contents do if lq.LabID = labID then yield lq].Head // Can only ever be 1
+
+
+    
     
 prRaw 5 "Queue Tests"
 prRaw 5 "Using 5 labs"
@@ -613,43 +618,81 @@ type client (clientID, numLabs) =
 
     let isFreeLab:bool = Array.exists (fun lkc -> lkc < 0) lastKnownCoord
     let getFreeLab:labID = if isFreeLab then Array.get [|for x in lastKnownCoord do if x < 0 then yield x|] 0 else -1
-    let mutable labControlled = -1 // -1 is I dont control a lab
-    let mutable experimentCompleted = false
+    let mutable labControlled = None // None is I dont control a lab
+    let mutable experimentCompleted = true // Start in completed state
 
-    let completeExperimentJob = experimentCompleted <- true
+    let completeExperimentJob = experimentCompleted <- not experimentCompleted
     
-
-    do printfn "Last known coords"
-    do lastKnownCoord |> Array.iter (fun lkc -> (printfn "%d is in a lab" lkc))
+    // Recursively call a client asking whether it owns the lab your looking for and if it doesnt ask it who they
+    // think had it last. Once you have asked everyone in the path then return that client id
+    let rec getCurrentLabOwner (cid:int) (lid:int) (foreignLastKnownCoord:int[]) =
+        if clients.Value.[cid].ownsLab lid then
+            cid
+        else
+            let nextForeignLastKnownCoord:int[] = clients.Value.[cid].getLastKnownCoord
+            getCurrentLabOwner nextForeignLastKnownCoord.[lid] lid nextForeignLastKnownCoord
+            
+        
     member this.ClientID = clientID  // So other clients can find our ID easily
-    member this.InitClients theClients theLabs =  clients:=theClients; labs:=theLabs; labControlled <- if ((Array.length !labs) - 1) < clientID then -1 else clientID 
+    member this.getLastKnownCoord = lastKnownCoord
+    member this.getQueueForLab labid = queueManager.queueForLab labid
     
+    // Determines if you own the Lab in question
+    member this.ownsLab labid = lastKnownCoord.[labid] = this.ClientID
+    
+    member this.InitClients theClients theLabs =  clients:=theClients; labs:=theLabs; labControlled <- if ((Array.length !labs) - 1) < clientID then None else Some clientID 
+
+    member this.UpdateLabState (labid:int) (clientid:int) (queuelength:int) = 
+        // Creates a new array with the updated clientid who owns that lab
+        let lastKnownCoord = [|for labindex in [0..(lastKnownCoord.Length - 1)] do if labid = labindex then yield clientid else yield lastKnownCoord.[labindex]|]
+        queueManager.queueForLab(labid).setQueueLength queuelength
+        ()
+
+    member this.EnqueueExperiment (experiment:asyncExperiment) (labid:int) =
+        if this.ownsLab labid then
+            (
+            // add the "exp" to the lab queue (i do this, since I have control of the lab)
+            queueManager.queueForLab(labid).enqueuedExperiments.Value.Enqueue(experiment)
+            // Call the originator of the experiment and update their last known coords for this lab
+            clients.Value.[experiment.ClientID].UpdateLabState labid this.ClientID (queueManager.queueForLab(labid).enqueuedExperiments.Value.Count)
+            )
+        else
+            (
+            clients.Value.[lastKnownCoord.[labid]].EnqueueExperiment experiment labid
+            // Call "EnqueueExpriment" on the "clientid" that I *think* has control of the lab
+            // e.g. proxy/forward this request on
+            )        
+        ()
+
+
+    member this.getLabQueueInformation clid labid =
+        if this.ownsLab labid then
+            
+            // add the "exp" to the lab queue (i do this, since I have control of the lab)
+            
+            // Call the originator of the experiment and update their last known coords for this lab
+            clients.Value.[clid].UpdateLabState labid this.ClientID (queueManager.queueForLab(labid).enqueuedExperiments.Value.Count)
+            
+        else
+            (
+            clients.Value.[lastKnownCoord.[labid]].getLabQueueInformation clid labid
+            // Call "getLabQueueInformation" on the "clientid" that I *think* has control of the lab
+            // e.g. proxy/forward this request on
+            )        
+        ()
     
    
     // This will be called each time a scientist on this host wants to submit an experiment.
     member this.DoExp delay exp =    // You need to write this dick.
-        experimentCompleted <- false
         let result = ref None
-        if labControlled > -1 // If i control a lab then do it
-            then 
-                prClient clientID "DEBUG" (sprintf "Attempting to do experiment")
-                let currentLab = labs.contents.[labControlled]
-                hLock currentLab <| fun labJob ->
-                    // The continueation function fed into DoExp lab function needs to notifiy the caller of the result
-                    let experimentJob = currentLab.DoExp delay exp clientID (fun res -> result:= Some res; completeExperimentJob) // After the thread that got the lock does its work then it can report its results
-                    // After calling the experiment thread continue with...
-                    labJob <| fun() -> experimentJob; prClient clientID "DEBUG" (sprintf "Ran Experiment, Completed?: %b" experimentCompleted)
-            else 
-                (queueManager.queueForLab 0).Enqueue( enqueuedExperiment(this.ClientID, exp)) |> ignore
+
+        
+        
+        ()
+
+                                                         
+        
        
-        if experimentCompleted
-            then
-                experimentCompleted <- false
-                prClient clientID "DEBUG" (sprintf "Succeeded at doing experiment")
-                (!result).Value
-            else
-                prClient clientID "DEBUG" (sprintf "Failed at doing experiment")
-                false
                 
                 
             
