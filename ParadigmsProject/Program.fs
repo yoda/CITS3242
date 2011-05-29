@@ -216,12 +216,11 @@ let rec unify exp1 exp2 sublist =
             if e = a then
                 sublist
             else
-                None //This variable has already been assigned to a different expression. #TDDO Should this be a unification attempt of the assigned expression and the current expression? :s
+                unify e a sublist //This variable has already been assigned to a different expression. #TDDO Should this be a unification attempt of the assigned expression and the current expression? A: Yes
     | A,B, s | B,A, s -> None //Two different particles
     | A,A, s | B,B, s -> s    //Two identical particles
     | _,_, _ -> None          //A mystery to us all.
 
-//let printRule rule = 
 
 let unifyTwoRules exp1 exp2 prop1 prop2 (sl:substitutionlist option)= 
     prRaw -1 (sprintf "Unify Two Rules: ||%s %s|| //%s %s//" (getExperimentAsStringWithSubs exp1 sl) (getExperimentAsStringWithSubs exp2 sl) (getExperimentAsStringWithSubs prop1 sl) (getExperimentAsStringWithSubs prop2 sl)) |> ignore
@@ -239,8 +238,6 @@ let rec allVariablesAccountedFor proposal substitutions =
     |Var(x) -> match getAssigned (Var(x)) substitutions with
         |None -> false
         |_ -> true
-
-
 
 let rec suffices2 (p1,p2) (rules: ruleGen list) substitutions = 
     prRaw -1 (sprintf "22 Suffic2ing %s %s" (exptostring p1) (exptostring p2)) |> ignore
