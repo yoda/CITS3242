@@ -613,6 +613,7 @@ type client (clientID, numLabs) =
     // Setup the lab queue manager for this client
     let queueManager:labQueueMan = labQueueMan (numLabs)
 
+    
     let isFreeLab:bool = Array.exists (fun lkc -> lkc < 0) lastKnownCoord
     let getFreeLab:labID = if isFreeLab then Array.get [|for x in lastKnownCoord do if x < 0 then yield x|] 0 else -1
     let mutable labControlled = None // None is I dont control a lab
@@ -645,43 +646,70 @@ type client (clientID, numLabs) =
         queueManager.queueForLab(labid).setQueueLength queuelength
         ()
 
+    
+    // Assumes that the caller has already checked for the most appropriate lab, basically just does what its told with no smarts.
     member this.EnqueueExperiment (experiment:asyncExperiment) (labid:int) =
         if this.ownsLab labid then
-            (
+            
             // add the "exp" to the lab queue (i do this, since I have control of the lab)
             queueManager.queueForLab(labid).enqueuedExperiments.Value.Enqueue(experiment)
             // Call the originator of the experiment and update their last known coords for this lab
             clients.Value.[experiment.ClientID].UpdateLabState labid this.ClientID (queueManager.queueForLab(labid).enqueuedExperiments.Value.Count)
-            )
+            
         else
-            (
+            
             clients.Value.[lastKnownCoord.[labid]].EnqueueExperiment experiment labid
             // Call "EnqueueExpriment" on the "clientid" that I *think* has control of the lab
             // e.g. proxy/forward this request on
-            )        
+                    
         ()
 
 
+    // Gets information about the lab in question, this allows the caller to make an informed decision of which lab to enqueue at.
     member this.getLabQueueInformation clid labid =
         if this.ownsLab labid then
-            
             // add the "exp" to the lab queue (i do this, since I have control of the lab)
             
             // Call the originator of the experiment and update their last known coords for this lab
             clients.Value.[clid].UpdateLabState labid this.ClientID (queueManager.queueForLab(labid).enqueuedExperiments.Value.Count)
             
         else
-            (
             clients.Value.[lastKnownCoord.[labid]].getLabQueueInformation clid labid
             // Call "getLabQueueInformation" on the "clientid" that I *think* has control of the lab
             // e.g. proxy/forward this request on
-            )        
+                    
         ()
     
    
     // This will be called each time a scientist on this host wants to submit an experiment.
     member this.DoExp delay exp =    // You need to write this dick.
         let result = ref None
+        let experiment = asyncExperiment(this.ClientID, exp, delay)
+        
+        // For each labid 
+        for labid in [0..(numLabs - 1)] do
+            // Update the information about each lab
+            this.getLabQueueInformation this.ClientID labid
+        
+        // For each of the lab owners find out if anyone has an empty queue
+        let freeLab = ref None
+
+        freeLab :=
+            try // Find the first client that owns a lab that has nothing in its queue (aka its free)
+                Some (List.find (fun(labid) -> queueManager.queueForLab(labid).getQueueLength = 0) [0..(numLabs - 1)])
+            with // List.find throws an exception if nothing is found. This means that there are no free labs.
+                | :? KeyNotFoundException -> prStamp this.ClientID "DEBUG" "No Free Labs"; None
+        
+        if freeLab.Value.IsNone then
+            // There are no free labs, need to enqueue to all labs.
+            for labID in [0..(numLabs - 1)] do
+                this.EnqueueExperiment experiment labID
+        else
+            // There is a lab available
+            ()
+                
+
+
 
         
         
