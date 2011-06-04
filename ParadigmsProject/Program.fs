@@ -530,7 +530,6 @@ let hLock obj f = let onUnlock = ref (fun() -> ())
                   (!onUnlock)()
                   res                                   
 
-                                                
 ///////////////////////////////////////////////////////////////////////////////////
 /// Add your code for the second part here and below, including in the client class below.
 ////////////////////////////////////////////////////////////////////////////////////
@@ -567,9 +566,6 @@ type labQueueMan (numQueues) =
     do printfn "Creating labQueueMan for %d labs" numQueues
     member this.getQueues = !labQueues
     member this.queueForLab labID = [for lq in labQueues.contents do if lq.LabID = labID then yield lq].Head // Can only ever be 1
-
-
-    
     
 prRaw 5 "Queue Tests"
 prRaw 5 "Using 5 labs"
@@ -594,7 +590,6 @@ prRaw 5 (sprintf "LabID of found lab: %d" (z.queueForLab labToGet).LabID)
 // 8. No static mutable variables are allowed, since these can't be decentralized. 
 // 9. You will probably want to define a type for queues, but be careful not to pass mutable values between clients.
       
-
 /// A class for clients that coordinate and unify experiments before sending them to labs.  
 /// (You need to finish this class.)
 let prClient cl pre str = prIndStr cl (sprintf "Host%d: %s" cl pre) str  // for client output
@@ -604,7 +599,6 @@ type client (clientID, numLabs) =
     let labs:lab[] ref = ref Array.empty
     /// The client coordinating each lab, according to the most recent information known by this client.
     let lastKnownCoord = Array.init numLabs (fun labID -> labID)  // Initially client i has lab i, for i=0..numLabs-1
-
     
     // printing functions for this client
     let prStr (pre:string) str = prIndStr clientID (sprintf "Client%d: %s" clientID pre) str 
@@ -612,7 +606,6 @@ type client (clientID, numLabs) =
 
     // Setup the lab queue manager for this client
     let queueManager:labQueueMan = labQueueMan (numLabs)
-
     
     let isFreeLab:bool = Array.exists (fun lkc -> lkc < 0) lastKnownCoord
     let getFreeLab:labID = if isFreeLab then Array.get [|for x in lastKnownCoord do if x < 0 then yield x|] 0 else -1
@@ -628,8 +621,7 @@ type client (clientID, numLabs) =
             cid
         else
             let nextForeignLastKnownCoord:int[] = clients.Value.[cid].getLastKnownCoord
-            getCurrentLabOwner nextForeignLastKnownCoord.[lid] lid nextForeignLastKnownCoord
-            
+            getCurrentLabOwner nextForeignLastKnownCoord.[lid] lid nextForeignLastKnownCoord  
         
     member this.ClientID = clientID  // So other clients can find our ID easily
     member this.getLastKnownCoord = lastKnownCoord
@@ -645,42 +637,35 @@ type client (clientID, numLabs) =
         let lastKnownCoord = [|for labindex in [0..(lastKnownCoord.Length - 1)] do if labid = labindex then yield clientid else yield lastKnownCoord.[labindex]|]
         queueManager.queueForLab(labid).setQueueLength queuelength
         ()
-
     
     // Assumes that the caller has already checked for the most appropriate lab, basically just does what its told with no smarts.
     member this.EnqueueExperiment (experiment:asyncExperiment) (labid:int) =
         if this.ownsLab labid then
-            
             // add the "exp" to the lab queue (i do this, since I have control of the lab)
             queueManager.queueForLab(labid).enqueuedExperiments.Value.Enqueue(experiment)
             // Call the originator of the experiment and update their last known coords for this lab
             clients.Value.[experiment.ClientID].UpdateLabState labid this.ClientID (queueManager.queueForLab(labid).enqueuedExperiments.Value.Count)
-            
         else
-            
             clients.Value.[lastKnownCoord.[labid]].EnqueueExperiment experiment labid
             // Call "EnqueueExpriment" on the "clientid" that I *think* has control of the lab
             // e.g. proxy/forward this request on
-                    
         ()
-
 
     // Gets information about the lab in question, this allows the caller to make an informed decision of which lab to enqueue at.
     member this.getLabQueueInformation clid labid =
         if this.ownsLab labid then
             // add the "exp" to the lab queue (i do this, since I have control of the lab)
-            
             // Call the originator of the experiment and update their last known coords for this lab
             clients.Value.[clid].UpdateLabState labid this.ClientID (queueManager.queueForLab(labid).enqueuedExperiments.Value.Count)
-            
         else
             clients.Value.[lastKnownCoord.[labid]].getLabQueueInformation clid labid
             // Call "getLabQueueInformation" on the "clientid" that I *think* has control of the lab
             // e.g. proxy/forward this request on
-                    
         ()
+
+    member this.resultNotification (experiment:asyncExperiment) (result:bool) = 
+        prStamp this.ClientID "DEBUG" (sprintf "Result for experiment: %s = %b" experiment.Experiment result)
     
-   
     // This will be called each time a scientist on this host wants to submit an experiment.
     member this.DoExp delay exp =    // You need to write this dick.
         let result = ref None
@@ -705,32 +690,15 @@ type client (clientID, numLabs) =
             for labID in [0..(numLabs - 1)] do
                 this.EnqueueExperiment experiment labID
         else
-            // There is a lab available
-            ()
-                
-
-
-
-        
-        
-        ()
-
-                                                         
-        
-       
-                
-                
             
-
-       
-       
-       
-        
-
-    // Add any additional members for client here - you will at least need some that can be called from
-    // other instances of the client class in order to coordinate requests.
-
-
+            // There is a free lab and I have a free lab (just use my free lab)
+            if (queueManager.queueForLab(this.ClientID).getQueueLength = 0) then
+                ()            
+            // There is a lab available and I dont have one   
+            else
+                ()
+            ()
+        ()
 
 //////////////////////////////////////////////////////////////// Top level testing code follows.      
 
@@ -741,10 +709,6 @@ let mkClientsAndLabs numClients (labsRules: labRules list) =
     let labs = [| for (i,rules) in List.zip [0..numLabs-1] labsRules -> lab (i,rules) |]
     Array.iter (fun (cl:client) -> cl.InitClients clients labs) clients
     (clients, labs)
-
-
-
-
 
 // Some simple testing code follows.  You almost certainly want to add your own tests to this.
 // scheduledClient and randomTest are designed to make it easy to build other tests.
