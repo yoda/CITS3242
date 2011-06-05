@@ -609,10 +609,8 @@ type client (clientID, numLabs) =
     
     
     
-    let labControlled = ref None // None is I dont control a lab
-    
-
-    
+    let labControlled = ref None // None is I dont control a lab this gets reinitialised at InitClients.
+    let runningLab = ref None // Initially I am not actually operating a lab even though I may have one.
     
     // Recursively call a client asking whether it owns the lab your looking for and if it doesnt ask it who they
     // think had it last. Once you have asked everyone in the path then return that client id
@@ -628,7 +626,7 @@ type client (clientID, numLabs) =
         
     member this.ClientID = clientID  // So other clients can find our ID easily
     member this.getLastKnownCoord = lastKnownCoord
-    member this.getQueueForLab labid = queueManager.queueForLab labid
+    member this.getQueueForLab labid = queueManager.queueForLab labid // Probably mutable object however not using it as a shared data store and will clone it.
     
     // Determines if you own the Lab in question
     member this.ownsLab labid = lastKnownCoord.[labid] = this.ClientID
@@ -708,6 +706,12 @@ type client (clientID, numLabs) =
                 else
                     for labID in [0..(numLabs - 1)] do
                         this.EnqueueExperiment experiment labID
+                    if runningLab.Value.IsNone then
+                        // What we have a lab and need to do work and havent started using our lab!
+                        // Start lab.
+                        ()
+                    else // Its ok we are working...
+                        ()
                     ()
                 ()
             ()
