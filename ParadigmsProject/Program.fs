@@ -221,10 +221,6 @@ let rec unify exp1 exp2 sublist =
 
 
 let unifyTwoRules exp1 exp2 prop1 prop2 (sl:substitutionlist option)= 
-//    prRaw -1 (sprintf "Unify Two Rules: [[%s will suffice for  %s]] if [[%s suffices for %s]]" (getExperimentAsStringWithSubs exp1 sl) (getExperimentAsStringWithSubs exp2 sl) (getExperimentAsStringWithSubs prop1 sl) (getExperimentAsStringWithSubs prop2 sl)) |> ignore
-//    match sl with
-//    |Some(s) -> [for v, a in s ->prRaw -1  (sprintf "Entry %s -> %s" (exptostring v) (exptostring a)) ] |> ignore
-//    |None -> true |> ignore
     match unify exp1 prop1 sl with
        |None -> None
        |sl -> unify exp2 prop2 sl
@@ -238,99 +234,22 @@ let rec allVariablesAccountedFor proposal substitutions =
         |None -> false
         |_ -> true
 
-//let ValidRulesSequence (p1, p2) rules substitutions allSucceedFunction = 
-//    [for rule in rules do
-//                match rule() with
-//                |Rule((r1, r2), subgoals) -> 
-//                    match unifyTwoRules p1 p2 r1 r2 (Some(substitutions)) with
-//                    |None -> ()                                                 //No Match
-//                    |Some(sl) ->                                                      //A Match!
-//                        prRaw -1 (sprintf "Matched [[%s suffices %s]] with [[%s suffices %s]]" (getExperimentAsStringWithSubs p1 sl) (getExperimentAsStringWithSubs p2 sl) (getExperimentAsStringWithSubs r1 sl) (getExperimentAsStringWithSubs r2 sl)) |> ignore
-//                        match subgoals with
-//                        |[] ->                                                  //No Subgoals, return subList as is
-//                            prRaw -1 "No subgoals so returning true" 
-//                            prRaw -1 (sprintf "%O" sl) 
-//                            yield sl
-//                        |_ ->                                                   //Some subgoals...
-//                            match allSucceedFunction rules subgoals sl with     
-//                            |None -> ()                                         //No match
-//                            |Some(subList) ->                                         //All matched so return the subList
-//                                prRaw -1 "All subgoals completed"   
-//                                yield subList       
-//        ]
-        
-//let rec CycleThroughSubLists vrs subgoals resolveAllSubgoalsFunc =
-//    match vrs with
-//    |[] -> None
-//    |vr::vrss -> resolveAllSubgoalsFunc rules subgoals vr
-    
-        
-//let rec ResolveAllSubgoals rules subgoals substitutions =
-//    match subgoals with
-//    |[] -> Some(substitutions)              //No subgoals, so just return!
-//    |subgoal::restOfSubgoals ->             //Some subgoals
-//        match ValidRulesSequence subgoal rules substitutions ResolveAllSubgoals with 
-//        |[] -> None                              //No Valid rules matches
-////            match subgoal with
-////            |exp1, exp2->prRaw -1 (sprintf "No valid rules matches for %s suffices %s" (getExperimentAsStringWithSubs exp1 (Some(substitutions))) (getExperimentAsStringWithSubs exp2 (Some(substitutions)))) |> ignore
-//        |vrs ->                       //Some valid rules matches.
-//            for vr::vrss in vrs do
-//                match ResolveAllSubgoals rules restOfSubgoals vr with
-//                |None -> ()
-//                |sl -> return sl
-////            match  with
-////                match newSubList with
-////                |None -> None
-////                |Some(sl) -> Some(sl)
-//    
-//
-//let GetValidSubstitutionListsForRulesMatches (p1, p2) rules substitutions allSucceedFunction = 
-//    [for rule in rules do                                                           //For each rule
-//                match rule() with
-//                |Rule((r1, r2), subgoals) ->                                        //Pattern match the rule
-//                    match unifyTwoRules p1 p2 r1 r2 (Some(substitutions)) with
-//                    |None -> ()                                                     //No Match
-//                    |Some(sl) ->                                                    //A Match!
-//                        prRaw -1 (sprintf "Matched [[%s suffices %s]] with [[%s suffices %s]]" (getExperimentAsStringWithSubs p1 sl) (getExperimentAsStringWithSubs p2 sl) (getExperimentAsStringWithSubs r1 sl) (getExperimentAsStringWithSubs r2 sl)) |> ignore
-//                        match subgoals with
-//                        |[] ->                                                  //No Subgoals, return subList as is
-//                            prRaw -1 "No subgoals so returning true" 
-//                            prRaw -1 (sprintf "%O" sl) 
-//                            yield sl
-//                        |_ ->                                                   //Some subgoals...
-////                            match allSucceedFunction rules subgoals sl with     
-////                            |[] -> ()                                         //No match
-////                            |vsls -> 
-//                              yield! allSucceedFunction rules subgoals sl
-////                            |Some(subList) ->                                         //All matched so return the subList
-////                                prRaw -1 "All subgoals completed"   
-////                                yield subList       
-//        ]
-//
-//let rec GetValidSubsitutionListsForSubGoals rules subgoals substitutionsSoFar =
-//    match subgoals with
-//    |[] -> [substitutionsSoFar]                 //All subgoals tested, return the sublist list as is.
-//    |s::ss ->                                   //Subgoals still untested
-//        [for substitutionList in substitutionsSoFar do      //For each sublist in the sublist list.
-//            match GetValidSubstitutionListsForRulesMatches s rules substitutionList GetValidSubsitutionListsForSubGoals with    //Find all valid rules matches according to this substitution list. 
-//            |sl -> yield! GetValidSubsitutionListsForSubGoals rules ss sl ]     //Yield the sublist list generated by using the above sublists for the remainder of the subgoals.
-//            
-
 let rec GetValidRuleList rules subgoal (substitutionList: (exp * exp) list) checkSubGoalsSucceedFunc =
-    [for rule in rules do                                                           //For each rule
+    seq {for rule in rules do                                                           //For each rule
                 match rule(), subgoal with
                 |Rule((r1, r2), subgoals), (p1,p2) ->                                        //Pattern match the rule
-                    match unifyTwoRules p1 p2 r1 r2 (Some(substitutionList)) with
+                    match unify r1 p1 (Some(substitutionList)) |> unify r2 p2  with
                     |None -> ()                                                     //No Match
                     |Some(sl) ->         //A Match!
                         prRaw -1 (sprintf "\tMatched [[%s suffices %s]] with [[%s suffices %s]]" (getExperimentAsStringWithSubs r1 (Some(sl))) (getExperimentAsStringWithSubs r2 (Some(sl))) (getExperimentAsStringWithSubs p1 (Some(sl))) (getExperimentAsStringWithSubs p2 (Some(sl)))) |> ignore          
-                        yield! checkSubGoalsSucceedFunc rules subgoals sl]
+                        yield! checkSubGoalsSucceedFunc rules subgoals sl}
 
 
 
 let rec CheckSubGoals rules subgoals (substitutionList: (exp * exp) list) =
     match subgoals with
-    |[] -> prRaw -1 "\tNo subgoals, rule succeeded"
+    |[] -> 
+        prRaw -1 "\tNo subgoals, rule succeeded"
         [substitutionList]
     |sg::sgs -> 
         getSufficesAsString sg (Some(substitutionList)) |> sprintf "Attempting to show %s" |> prRaw -1
@@ -475,32 +394,32 @@ let rulesC = [rule4; rule5; rule9; rule10; rule11; rule12]         // Rules 9,10
                                                                    // Focus on rules like the others first.
 let prTest pre res = pr0 (pre + " = ") res |> ignore
 
-//suffices [rule1] (A, A) |> prTest "suffices [rule1] (A, A) should be true" 
-//suffices [rule1] (A, B) |> prTest "suffices [rule1] (A, B) should be false" 
-//prRaw 0 "\n"
+suffices [rule1] (A, A) |> prTest "suffices [rule1] (A, A) should be true" 
+suffices [rule1] (A, B) |> prTest "suffices [rule1] (A, B) should be false" 
+prRaw 0 "\n"
+
+suffices rulesA (A, B) |> prTest "suffices rulesA (A, B) should be false"
+suffices rulesA (Mix (A, B), A) |> prTest "suffices rulesA (Mix (A, B),A) should be true"
 //
-//suffices rulesA (A, B) |> prTest "suffices rulesA (A, B) should be false"
-//suffices rulesA (Mix (A, B), A) |> prTest "suffices rulesA (Mix (A, B),A) should be true"
-////
-//suffices rulesA (Mix (Mix (A, B), B),A) |> prTest "suffices rulesA (Mix (Mix (A, B), B),A) should be true"
-//suffices rulesA (Mix (Mix (B, B), B),A) |> prTest "suffices rulesA (Mix (Mix (B, B), B),A) should be false"
-//suffices rulesA (Mix (Mix (B, B), B), Mix (B, B)) |> prTest "suffices rulesA (Mix (Mix (B, B), B), Mix (B, B)) should be true"
-//suffices rulesA (Mix (Mix (A, B), B), Mix (B, A)) |> prTest "suffices rulesA (Mix (Mix (A, B), B), Mix (B, A)) should be false"
-//prRaw 0 "\n"
-//
-//
-//suffices rulesB (A, B) |> prTest "suffices rulesB (A, B) should be false"
-//suffices rulesB (Mix (A, B), A) |> prTest "suffices rulesB (Mix (A, B),A) should be true"
-//
-//suffices rulesB (Mix (Mix (A, B), B),A) |> prTest "suffices rulesB (Mix (Mix (A, B), B),A) should be true"
-//suffices rulesB (Mix (Mix (B, B), B),A) |> prTest "suffices rulesB (Mix (Mix (B, B), B),A) should be false"
-//suffices rulesB (Mix (Mix (B, B), B), Mix (B, B)) |> prTest "suffices rulesB (Mix (Mix (B, B), B), Mix (B, B)) should be true"
-//suffices rulesB (Mix (Mix (A, B), B), Mix (B, A)) |> prTest "suffices rulesB (Mix (Mix (A, B), B), Mix (B, A)) should be true"
-//prRaw 0 "\n"
+suffices rulesA (Mix (Mix (A, B), B),A) |> prTest "suffices rulesA (Mix (Mix (A, B), B),A) should be true"
+suffices rulesA (Mix (Mix (B, B), B),A) |> prTest "suffices rulesA (Mix (Mix (B, B), B),A) should be false"
+suffices rulesA (Mix (Mix (B, B), B), Mix (B, B)) |> prTest "suffices rulesA (Mix (Mix (B, B), B), Mix (B, B)) should be true"
+suffices rulesA (Mix (Mix (A, B), B), Mix (B, A)) |> prTest "suffices rulesA (Mix (Mix (A, B), B), Mix (B, A)) should be false"
+prRaw 0 "\n"
 
 
-//
-//suffices rulesC (A, B) |> prTest "suffices rulesC (A, B) should be true (Rule 11)"
+suffices rulesB (A, B) |> prTest "suffices rulesB (A, B) should be false"
+suffices rulesB (Mix (A, B), A) |> prTest "suffices rulesB (Mix (A, B),A) should be true"
+
+suffices rulesB (Mix (Mix (A, B), B),A) |> prTest "suffices rulesB (Mix (Mix (A, B), B),A) should be true"
+suffices rulesB (Mix (Mix (B, B), B),A) |> prTest "suffices rulesB (Mix (Mix (B, B), B),A) should be false"
+suffices rulesB (Mix (Mix (B, B), B), Mix (B, B)) |> prTest "suffices rulesB (Mix (Mix (B, B), B), Mix (B, B)) should be true"
+suffices rulesB (Mix (Mix (A, B), B), Mix (B, A)) |> prTest "suffices rulesB (Mix (Mix (A, B), B), Mix (B, A)) should be true"
+prRaw 0 "\n"
+
+
+
+suffices rulesC (A, B) |> prTest "suffices rulesC (A, B) should be true (Rule 11)"
 suffices rulesC (Mix (A, B), A) |> prTest "suffices rulesC (Mix (A, B),A) should be true OMG!"
 //
 //suffices rulesC (Mix (Mix (A, B), B),A) |> prTest "suffices rulesC (Mix (Mix (A, B), B),A)"
