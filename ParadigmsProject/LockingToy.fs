@@ -9,6 +9,7 @@ open System.Threading
 open System.Collections.Generic
 open System.Windows.Forms          // Note that you'll need references for System.Windows.Forms and
 open System.Drawing                // System.Drawing  (See the "solution explorer", on the right in VS...)  ----->>> 
+open Microsoft.FSharp.Core.Printf
 
 /// Generate a random positive integer in 1..n
 let random = let myRand = Random() in myRand.Next
@@ -29,10 +30,13 @@ let waitFor obj = ignore(Monitor.Wait obj)
 /// wake up all threads waiting on a given object
 let wakeWaiters obj = Monitor.PulseAll obj
 
+let logger (str:string) = System.Console.WriteLine(str)
+
 type ToyLocker () =
-    let workQueue = Queue()
+    let workQueue = Queue([1..2])
     
     let stop_work = ref false
+    
     let queuelength_internal = ref workQueue.Count
     let work_loop () = 
         while(not stop_work.Value) do
@@ -40,8 +44,9 @@ type ToyLocker () =
                 while(queuelength_internal.Value = 0) do
                     printfn "Thread: %s is waiting" Thread.CurrentThread.Name
                     waitFor queuelength_internal
-                Console.Out.WriteLine( (sprintf "Thread: %s woke up because of new data: %d" Thread.CurrentThread.Name, workQueue.Peek))
-                workQueue.Dequeue; queuelength_internal := (queuelength_internal.Value - 1)
+                logger (sprintf "Thread: %s woke up because of new data: " Thread.CurrentThread.Name)
+                logger (sprintf "Data: %d" (workQueue.Dequeue()))
+                queuelength_internal := (queuelength_internal.Value - 1)
                 wakeWaiters queuelength_internal
         ()
             
@@ -52,6 +57,7 @@ type ToyLocker () =
     member this.dequeue = workQueue.Dequeue; queuelength_internal := (queuelength_internal.Value - 1)
     member this.listener = startThread "Thread Listener" work_loop
     member this.queuelength = queuelength_internal
+    member this.log str = printfn str
 
     
 
@@ -73,13 +79,14 @@ if false then
     startThread "Thread B" lockaholic
     threada.Start()
 
-printfn "Start Listener"
+logger "Start Listener"
 let locker = new ToyLocker()
 
 locker.listener
 
+
 while(true) do
     System.Console.ReadLine() |> ignore
-    printfn "Enqueueing item to listener"
+    logger "Enqueueing item to listener"
     locker.enqueue(random 10)
-    printfn "Number of Enqueued items: %d" locker.queuelength.Value
+    logger (sprintf "Number of Enqueued items: %d" locker.queuelength.Value)
