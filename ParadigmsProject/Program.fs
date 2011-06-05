@@ -607,12 +607,12 @@ type client (clientID, numLabs) =
     // Setup the lab queue manager for this client
     let queueManager:labQueueMan = labQueueMan (numLabs)
     
-    let isFreeLab:bool = Array.exists (fun lkc -> lkc < 0) lastKnownCoord
-    let getFreeLab:labID = if isFreeLab then Array.get [|for x in lastKnownCoord do if x < 0 then yield x|] 0 else -1
-    let mutable labControlled = None // None is I dont control a lab
-    let mutable experimentCompleted = true // Start in completed state
+    
+    
+    let labControlled = ref None // None is I dont control a lab
+    
 
-    let completeExperimentJob = experimentCompleted <- not experimentCompleted
+    
     
     // Recursively call a client asking whether it owns the lab your looking for and if it doesnt ask it who they
     // think had it last. Once you have asked everyone in the path then return that client id
@@ -622,6 +622,9 @@ type client (clientID, numLabs) =
         else
             let nextForeignLastKnownCoord:int[] = clients.Value.[cid].getLastKnownCoord
             getCurrentLabOwner nextForeignLastKnownCoord.[lid] lid nextForeignLastKnownCoord  
+
+    let runLab labid =
+        ()
         
     member this.ClientID = clientID  // So other clients can find our ID easily
     member this.getLastKnownCoord = lastKnownCoord
@@ -630,7 +633,8 @@ type client (clientID, numLabs) =
     // Determines if you own the Lab in question
     member this.ownsLab labid = lastKnownCoord.[labid] = this.ClientID
     
-    member this.InitClients theClients theLabs =  clients:=theClients; labs:=theLabs; labControlled <- if ((Array.length !labs) - 1) < clientID then None else Some clientID 
+    member this.InitClients theClients theLabs =  clients:=theClients; labs:=theLabs; labControlled := (if ((Array.length !labs) - 1) < clientID then (None) else (Some clientID))
+     
 
     member this.UpdateLabState (labid:int) (clientid:int) (queuelength:int) = 
         // Creates a new array with the updated clientid who owns that lab
@@ -662,7 +666,8 @@ type client (clientID, numLabs) =
             // Call "getLabQueueInformation" on the "clientid" that I *think* has control of the lab
             // e.g. proxy/forward this request on
         ()
-
+    
+    // Priliminary result notifcation callback.
     member this.resultNotification (experiment:asyncExperiment) (result:bool) = 
         prStamp this.ClientID "DEBUG" (sprintf "Result for experiment: %s = %b" experiment.Experiment result)
     
@@ -694,8 +699,16 @@ type client (clientID, numLabs) =
             // There is a free lab and I have a free lab (just use my free lab)
             if (queueManager.queueForLab(this.ClientID).getQueueLength = 0) then
                 ()            
-            // There is a lab available and I dont have one   
+            
             else
+                // There is a lab available and I dont have one   
+                if labControlled.Value.IsNone then
+                    ()
+                // Otherwise I have a lab already I should just continue processing. And enqueue to all labs.
+                else
+                    for labID in [0..(numLabs - 1)] do
+                        this.EnqueueExperiment experiment labID
+                    ()
                 ()
             ()
         ()
