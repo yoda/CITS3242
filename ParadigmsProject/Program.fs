@@ -471,6 +471,7 @@ let SplitIntoSufficed (queue:asyncExperiment Queue) (alab:lab) (exp:asyncExperim
     ([for exp1 in queue do if suffices alab.Rules (exp.Experiment, exp1.Experiment) then yield exp1], [for exp1 in queue do if not (suffices alab.Rules (exp.Experiment, exp1.Experiment)) then yield exp1])
 
 let chooseExperiment (queue:asyncExperiment Queue) (alab:lab) =
+    //TODO Everything after the enum is created through to when its done needs to be locked.
     let mutable enum = queue.GetEnumerator ()
     let f = enum.MoveNext () 
     let myexp = enum.Current.Experiment
