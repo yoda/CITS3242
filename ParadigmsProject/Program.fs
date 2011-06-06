@@ -458,6 +458,8 @@ let hLock obj f = let onUnlock = ref (fun() -> ())
 // Lab4 Queue [_,_,_,_,_]
 // LabN Queue [_,_,_,_,_]
 
+let logger (str:string) = System.Console.WriteLine(str)
+
 // An enqueued experiment
 type asyncExperiment (clientID, exp, delay) =
     member this.ClientID = clientID
@@ -467,11 +469,74 @@ type asyncExperiment (clientID, exp, delay) =
 
 // Queue for a particular lab
 type labQueue (labID) =
+    // Internal working queue for lab
+    let workQueue:asyncExperiment Queue ref = ref (Queue ())
+    // Queuelength used when not actually running a lab
     let mutable queuelength = 0
-    member this.enqueuedExperiments:asyncExperiment Queue ref = ref (Queue ())
+
+    // Ref for workqueue count to be used as monitor for change of the queue length
+    let cwq () = workQueue.Value.Count
+    
+    // Notify the listener working thread to stop.
+    let stop_work = ref false
+    
+    // The internal queuelength
+    let queuelength_internal = ref cwq
+
+    // Recent result
+    let result = ref None
+
+    // semaphore
+    let flag = ref false
+
+    // Work loop to be run only from this.listener member theoretically allows one client to run multiple labs.
+    let work_loop (alab:lab) = 
+        while(not stop_work.Value) do
+            lock queuelength_internal <| fun() -> 
+                while(queuelength_internal.Value() = 0) do
+                    printfn "Thread: %s is waiting" Thread.CurrentThread.Name
+                    waitFor queuelength_internal
+                logger (sprintf "Thread: %s woke up because of new data: " Thread.CurrentThread.Name)
+                let query = workQueue.Value.Dequeue()
+                logger "Launching Lab Experiment Request"
+                lock flag <| fun() ->
+                    while(flag.Value) do
+                        flag := true
+                        waitFor flag
+                    logger "Got access to do experiment"
+                    hLock result <| fun later -> let v = alab.DoExp query.Delay query.Experiment query.ClientID (fun(res) -> (lock result <| fun() -> result := Some res; logger "Finished Experiment"; wakeWaiters result))
+                                                 later <| fun() -> lock result <| fun() -> 
+                                                                                    while(result.Value.IsNone) do 
+                                                                                        logger (sprintf "Thread: %s is waiting" Thread.CurrentThread.Name)
+                                                                                        waitFor result
+                                                                                    // Notification of results @TODO
+                                                                                    result := None
+                                                                                    logger "Got result"
+                                                                                    wakeWaiters result
+                    flag := false
+                    wakeWaiters flag
+                    
+                wakeWaiters queuelength_internal
+        ()
+            
+    // Enqueue and notify listener of new job
+    member this.enqueue obj = lock queuelength_internal <| fun() -> 
+        workQueue.Value.Enqueue obj
+        wakeWaiters queuelength_internal
+
+    // Dequeue, should not be used
+    member this.dequeue = workQueue.Value.Dequeue
+
+    // Start a new lab worker 
+    member this.listener (alab:lab) = startThread "Lab Worker" (fun() -> (work_loop alab))
+    member this.enqueuedExperiments = workQueue
     member this.LabID = labID
+
+    // Get set the foreign queuelength entries
     member this.getQueueLength = queuelength
     member this.setQueueLength len = queuelength <- len
+
+
 
 // Queue manager
 type labQueueMan (numQueues) = 
@@ -479,7 +544,7 @@ type labQueueMan (numQueues) =
     do printfn "Creating labQueueMan for %d labs" numQueues
 
     member this.getQueues = !labQueues
-    member this.queueForLab labID = [for lq in labQueues.contents do if lq.LabID = labID then yield lq].Head // Can only ever be 1
+    member this.queueForLab labID = [for lq in labQueues.Value do if lq.LabID = labID then yield lq].Head // Can only ever be 1
     
 prRaw 5 "Queue Tests"
 prRaw 5 "Using 5 labs"
@@ -538,6 +603,8 @@ type client (clientID, numLabs) =
 
     let runLab labid =
         ()
+
+
         
     member this.ClientID = clientID  // So other clients can find our ID easily
     member this.getLastKnownCoord = lastKnownCoord
@@ -610,7 +677,7 @@ type client (clientID, numLabs) =
         else
             
             // There is a free lab and I have a free lab (just use my free lab)
-            if (queueManager.queueForLab(this.ClientID).getQueueLength = 0) then
+            if false then//(queueManager.queueForLab(this.ClientID).getQueueLength = 0) then
                 ()            
             
             else
@@ -624,6 +691,7 @@ type client (clientID, numLabs) =
                     if runningLab.Value.IsNone then
                         // What we have a lab and need to do work and havent started using our lab!
                         // Start lab.
+                        queueManager.queueForLab(labControlled.Value.Value).listener(labs.Value.[labControlled.Value.Value])
                         ()
                     else // Its ok we are working...
                         ()
@@ -707,7 +775,7 @@ let randomTest avgWait avgBusyTime numExp numClients (labsRules: labRules list) 
 //           scheduledClient clients 4 [(400, 200, A)]
 //          ]
 
-randomTest 10 50 4 1 [rulesB] |> ignore
+randomTest 10 50 4 5 [rulesB; rulesB] |> ignore
 //randomTest 10 50 4 2 [rulesB; rulesB] |> ignore
 //randomTest 10 50 4 8 [rulesB; rulesB] |> ignore            // A smaller random test.
 //randomTest 5 20 5 20 [rulesA; rulesB; rulesC] |> ignore    // A larger random test.
