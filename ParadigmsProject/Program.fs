@@ -467,8 +467,37 @@ type asyncExperiment (clientID, exp, delay) =
     member this.Experiment  = exp:exp
     member this.Timestamp = DateTime.Now
 
+let SplitIntoSufficed (queue:asyncExperiment Queue) (alab:lab) (exp:asyncExperiment) = 
+    ([for exp1 in queue do if suffices alab.Rules (exp.Experiment, exp1.Experiment) then yield exp1], [for exp1 in queue do if not (suffices alab.Rules (exp.Experiment, exp1.Experiment)) then yield exp1])
+
+let chooseExperiment (queue:asyncExperiment Queue) (alab:lab) =
+    let enum = queue.GetEnumerator ()
+    let myexp = enum.Current.Experiment
+    //For each experiment if it suffices for the first experimet, count how many other experiments it suffices for, and return a list of tuples of experiment, number fo exps it suffices pairs.
+    [for exp in queue do 
+        if suffices alab.Rules (exp.Experiment,myexp) then 
+            yield (exp, List.fold(fun totalmatch (exp1:asyncExperiment) -> 
+                totalmatch + 
+                if suffices alab.Rules (exp.Experiment,exp1.Experiment) then 
+                    1 
+                else 0
+                ) 0 ([for k in queue.ToArray() do yield k]) )  ] |>
+        //Then fold the list into a tuple representing the maximum number of experiments that it suffices for.
+        List.fold (fun (maxExp, maxCount) (exp, count) -> 
+            if count > maxCount then 
+                (exp, count) 
+            elif count = maxCount then 
+                if (expSize exp.Experiment) > (expSize maxExp.Experiment) then 
+                    (exp, count) 
+                else 
+                    (maxExp, maxCount)
+            else (maxExp, maxCount) 
+        ) (enum.Current, 0)
+
+
+
 // Queue for a particular lab
-type labQueue (labID) =
+type labQueue (labID, resultCallback) =
     // Internal working queue for lab
     let workQueue:asyncExperiment Queue ref = ref (Queue ())
     // Queuelength used when not actually running a lab
@@ -497,7 +526,8 @@ type labQueue (labID) =
                     printfn "Thread: %s is waiting" Thread.CurrentThread.Name
                     waitFor queuelength_internal
                 logger (sprintf "Thread: %s woke up because of new data: " Thread.CurrentThread.Name)
-                let query = workQueue.Value.Dequeue()
+                
+                let query = chooseExperiment workQueue.Value alab
                 logger "Launching Lab Experiment Request"
                 lock flag <| fun() ->
                     while(flag.Value) do
@@ -510,6 +540,10 @@ type labQueue (labID) =
                                                                                         logger (sprintf "Thread: %s is waiting" Thread.CurrentThread.Name)
                                                                                         waitFor result
                                                                                     // Notification of results @TODO
+                                                                                    match SplitIntoSufficed workQueue.Value alab query with
+                                                                                        | (sufficed, failed) -> 
+                                                                                            workQueue := new Queue(failed)
+                                                                                            resultCallback sufficed result.Value
                                                                                     result := None
                                                                                     logger "Got result"
                                                                                     wakeWaiters result
@@ -539,8 +573,8 @@ type labQueue (labID) =
 
 
 // Queue manager
-type labQueueMan (numQueues) = 
-    let labQueues:labQueue list ref = ref ([for i in [0..numQueues] -> labQueue i])
+type labQueueMan (numQueues, resultCallback) = 
+    let labQueues:labQueue list ref = ref ([for i in [0..numQueues] -> labQueue i resultCallback])
     do printfn "Creating labQueueMan for %d labs" numQueues
 
     member this.getQueues = !labQueues
@@ -584,7 +618,7 @@ type client (clientID, numLabs) =
     let pr (pre:string) res = prStr pre (sprintf "%A" res); res
 
     // Setup the lab queue manager for this client
-    let queueManager:labQueueMan = labQueueMan (numLabs)
+    let queueManager:labQueueMan = labQueueMan (numLabs, this.resultNotifications)
     
     
     
@@ -648,8 +682,9 @@ type client (clientID, numLabs) =
         ()
     
     // Priliminary result notifcation callback.
-    member this.resultNotification (experiment:asyncExperiment) (result:bool) = 
-        prStamp this.ClientID "DEBUG" (sprintf "Result for experiment: %s = %b"  (getExperimentAsStringWithSubs experiment.Experiment (Some [])) result)
+    member this.resultNotifications (experiments:asyncExperiment List) (result:bool) = 
+        for asyncExp in experiments do
+            prStamp asyncExp.ClientID "DEBUG" (sprintf "Result for experiment: %s = %b"  (getExperimentAsStringWithSubs asyncExp.Experiment (Some [])) result)
     
     // This will be called each time a scientist on this host wants to submit an experiment.
     member this.DoExp delay (exp:exp) =    // You need to write this dick.
