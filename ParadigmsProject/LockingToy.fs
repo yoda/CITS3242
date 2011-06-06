@@ -32,29 +32,32 @@ let wakeWaiters obj = Monitor.PulseAll obj
 
 let logger (str:string) = System.Console.WriteLine(str)
 
+
+
 type ToyLocker () =
     let workQueue = Queue([1..2])
+
+    let cwq () = workQueue.Count
     
     let stop_work = ref false
     
-    let queuelength_internal = ref workQueue.Count
+    let queuelength_internal = ref cwq
     let work_loop () = 
         while(not stop_work.Value) do
             lock queuelength_internal <| fun() -> 
-                while(queuelength_internal.Value = 0) do
+                while(queuelength_internal.Value() = 0) do
                     printfn "Thread: %s is waiting" Thread.CurrentThread.Name
                     waitFor queuelength_internal
                 logger (sprintf "Thread: %s woke up because of new data: " Thread.CurrentThread.Name)
                 logger (sprintf "Data: %d" (workQueue.Dequeue()))
-                queuelength_internal := (queuelength_internal.Value - 1)
                 wakeWaiters queuelength_internal
         ()
             
     member this.enqueue obj = lock queuelength_internal <| fun() -> 
         workQueue.Enqueue obj
-        queuelength_internal := (queuelength_internal.Value + 1)
+       
         wakeWaiters queuelength_internal
-    member this.dequeue = workQueue.Dequeue; queuelength_internal := (queuelength_internal.Value - 1)
+    member this.dequeue = workQueue.Dequeue
     member this.listener = startThread "Thread Listener" work_loop
     member this.queuelength = queuelength_internal
     member this.log str = printfn str
@@ -89,4 +92,4 @@ while(true) do
     System.Console.ReadLine() |> ignore
     logger "Enqueueing item to listener"
     locker.enqueue(random 10)
-    logger (sprintf "Number of Enqueued items: %d" locker.queuelength.Value)
+    logger (sprintf "Number of Enqueued items: %d" (locker.queuelength.Value ()))

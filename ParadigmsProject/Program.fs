@@ -168,7 +168,7 @@ let rec getSubListString sl =
 //Prints a substitution list. Used this for testing.
 let rec printSubList sl intendedresult = 
     match sl with 
-    |None -> prRaw -1 (sprintf "%s\nIntended Result:\n%s\n"noneString intendedresult)
+    |None -> prRaw -1 (sprintf "%s\nIntended Result:\nSubstitution is None type\n" intendedresult)
     |Some([]) -> prRaw -1  (sprintf"Empty substitution list\nIntended Result:\n%s\n"intendedresult)
     |Some(sl) ->
         [for v, a in sl ->prRaw -1  (sprintf "Entry %s -> %s" (exptostring v) (exptostring a)) ] |> ignore
@@ -462,7 +462,7 @@ let hLock obj f = let onUnlock = ref (fun() -> ())
 type asyncExperiment (clientID, exp, delay) =
     member this.ClientID = clientID
     member this.Delay = delay
-    member this.Experiment = exp
+    member this.Experiment  = exp:exp
     member this.Timestamp = DateTime.Now
 
 // Queue for a particular lab
@@ -477,6 +477,7 @@ type labQueue (labID) =
 type labQueueMan (numQueues) = 
     let labQueues:labQueue list ref = ref ([for i in [0..numQueues] -> labQueue i])
     do printfn "Creating labQueueMan for %d labs" numQueues
+
     member this.getQueues = !labQueues
     member this.queueForLab labID = [for lq in labQueues.contents do if lq.LabID = labID then yield lq].Head // Can only ever be 1
     
@@ -533,6 +534,7 @@ type client (clientID, numLabs) =
         else
             let nextForeignLastKnownCoord:int[] = clients.Value.[cid].getLastKnownCoord
             getCurrentLabOwner nextForeignLastKnownCoord.[lid] lid nextForeignLastKnownCoord  
+    
 
     let runLab labid =
         ()
@@ -580,10 +582,10 @@ type client (clientID, numLabs) =
     
     // Priliminary result notifcation callback.
     member this.resultNotification (experiment:asyncExperiment) (result:bool) = 
-        prStamp this.ClientID "DEBUG" (sprintf "Result for experiment: %s = %b" experiment.Experiment result)
+        prStamp this.ClientID "DEBUG" (sprintf "Result for experiment: %s = %b"  (getExperimentAsStringWithSubs experiment.Experiment (Some [])) result)
     
     // This will be called each time a scientist on this host wants to submit an experiment.
-    member this.DoExp delay exp =    // You need to write this dick.
+    member this.DoExp delay (exp:exp) =    // You need to write this dick.
         let result = ref None
         let experiment = asyncExperiment(this.ClientID, exp, delay)
         
@@ -677,7 +679,7 @@ let randomTestClient clients clID avgWait avgBusyTime numExp =
     // scheduledClient is function
     scheduledClient clients clID 
     // Build a schedule randomising params for 1..numExp
-       ( List.map (fun _ -> (random avgWait*2, random avgBusyTime*2, randTerm() )) [1..numExp] )
+       ( List.map (fun _ -> (random avgWait*2, random avgBusyTime*2, randTerm () )) [1..numExp] )
 
 // avgWait is the average wait time in the experiments
 // avgBusyTime is the average time it takes to complete the experiment

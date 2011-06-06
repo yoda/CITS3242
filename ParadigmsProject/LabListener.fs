@@ -56,7 +56,7 @@ let result = ref None
 
 
 
-type ToyLocker () =
+type LabScheduler () =
     let workQueue = Queue([1..2])
     
     let stop_work = ref false
@@ -85,7 +85,7 @@ type ToyLocker () =
 
 
 logger "Start Listener"
-let locker = new ToyLocker()
+let locker = new LabScheduler()
 
 locker.listener
 
@@ -120,14 +120,14 @@ let hLock obj f = let onUnlock = ref (fun() -> ())
 
 
 // Hooklock
-let flag = ref true
-for i in [1..20] do 
+let flag = ref false
+for i in [1..100] do 
     startThread (sprintf "%d" i) (fun() ->
         logger "Launching Lab Experiment Request"
 
         lock flag <| fun() ->
             while(flag.Value) do
-                flag := false
+                flag := true
                 waitFor flag
             logger "Got access to do experiment"
             hLock result <| fun later -> let v = laba.DoExp (random 500) 1 (fun(res) -> (lock result <| fun() -> result := Some res; logger "Finished Experiment"; wakeWaiters result) )
@@ -138,9 +138,10 @@ for i in [1..20] do
                                                                 result := None
                                                                 logger "Got result"
                                                                 wakeWaiters result
-            flag := true
+            flag := false
             wakeWaiters flag
     )
 
 
     
+System.Console.WriteLine("Tester")
