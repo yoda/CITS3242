@@ -673,7 +673,7 @@ type client (clientID, numLabs) =
     member this.EnqueueExperiment (experiment:asyncExperiment) (labid:int) =
         if this.ownsLab labid then
             // add the "exp" to the lab queue (i do this, since I have control of the lab)
-            queueManager.queueForLab(labid).enqueuedExperiments.Value.Enqueue(experiment)
+            queueManager.queueForLab(labid).enqueue(experiment)
             // Call the originator of the experiment and update their last known coords for this lab
             clients.Value.[experiment.ClientID].UpdateLabState labid this.ClientID (queueManager.queueForLab(labid).enqueuedExperiments.Value.Count)
         else
