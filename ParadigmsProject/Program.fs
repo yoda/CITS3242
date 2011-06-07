@@ -475,7 +475,9 @@ let chooseExperiment (qref:asyncExperiment Queue ref) (alab:lab) =
     lock qref (fun () ->
         let mutable enum = (!qref).GetEnumerator ()
         let f = enum.MoveNext () 
-        let myexp = enum.Current.Experiment
+        let myAE = enum.Current
+        let myexp = myAE.Experiment
+        enum.Dispose() |> ignore
         //For each experiment if it suffices for the first experimet, count how many other experiments it suffices for, and return a list of tuples of experiment, number fo exps it suffices pairs.
         match 
             [for exp in !qref do 
@@ -496,7 +498,7 @@ let chooseExperiment (qref:asyncExperiment Queue ref) (alab:lab) =
                         else 
                             (maxExp, maxCount)
                     else (maxExp, maxCount) 
-                ) (enum.Current, 0) with
+                ) (myAE, 0) with
         |e,i->e
    )
 
