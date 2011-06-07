@@ -473,14 +473,14 @@ let SplitIntoSufficed (queue:asyncExperiment Queue) (alab:lab) (exp:asyncExperim
 let chooseExperiment (qref:asyncExperiment Queue ref) (alab:lab) =
     //TODO Everything after the enum is created through to when its done needs to be locked.
     lock qref (fun () ->
-        let mutable enum = (!qref).GetEnumerator ()
+        let mutable enum = (qref.Value).GetEnumerator ()
         let f = enum.MoveNext () 
         let myAE = enum.Current
         let myexp = myAE.Experiment
         enum.Dispose() |> ignore
         //For each experiment if it suffices for the first experimet, count how many other experiments it suffices for, and return a list of tuples of experiment, number fo exps it suffices pairs.
         match 
-            [for exp in !qref do 
+            [for exp in qref.Value do 
                 if suffices alab.Rules (exp.Experiment,myexp) then 
                     yield (exp, List.fold(fun totalmatch (exp1:asyncExperiment) -> 
                         totalmatch + 
@@ -652,13 +652,7 @@ type client (clientID, numLabs) =
         else
             let nextForeignLastKnownCoord:int[] = clients.Value.[cid].getLastKnownCoord
             getCurrentLabOwner nextForeignLastKnownCoord.[lid] lid nextForeignLastKnownCoord  
-    
 
-    let runLab labid =
-        ()
-
-
-        
     member this.ClientID = clientID  // So other clients can find our ID easily
     member this.getLastKnownCoord = lastKnownCoord
     member this.getQueueForLab labid = queueManager.queueForLab labid // Probably mutable object however not using it as a shared data store and will clone it.
