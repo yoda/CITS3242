@@ -224,9 +224,10 @@ let rec unify exp1 exp2 sublist =
                 match a with
                 |None ->                    //The Var has not been assigned, so go ahead
                     Some(sl@[(Var(v),e)])   //and assign the other expression to it, and then put that in the subsitution list.
-                |Some(a) -> 
-                        unify e a sublist   //This variable has already been assigned to a different expression. 
-                                            //This means we need to attempt unification of the variable and the expression to make sure they are compatible. (unifiable?)
+                |_ -> raise (Exception "Variable was somehow assigned during unification (impossible!)")    
+                                            //This variable has already been assigned to a different expression. 
+                                            //This means we need to attempt unification of the variable and the expression to make sure they are compatible.
+                                            //Due to the fact the variables are checked for previous assignation, this part should actually never be called.
             | A,B | B,A -> None             //Two different particles
             | A,A | B,B -> sublist          //Two identical particles
             | _,_ -> None                   //A mystery to us all. A mix and non-mix possibly.
@@ -244,16 +245,17 @@ let rec allVariablesAccountedFor proposal substitutions =
 
 //Generates a sequence of substitution lists that are generated from matching rules to the subgoal. This is a proper match in the sense that not only does the rule match, but all of it
 //subgoals were successful and all resolved to a subgoal-less rule, in light of the given substitution list.
-let rec GetValidRuleList rules subgoal (substitutionList: (exp * exp) list) checkSubGoalsSucceedFunc =
-    seq {for rule in rules do                                                               //For each rule
-                match rule(), subgoal with
-                |Rule((r1, r2), subgoals), (p1,p2) ->                                       //Pattern match the executed rule.
-                    match unify r1 p1 (Some(substitutionList)) |> unify r2 p2  with         //Attempt to unify it with the subgoal.
-                    |None -> ()                                                             //No match, so don't ass this rule ot the list.
-                    |Some(sl) ->                                                            //A Match!
-                       yield! checkSubGoalsSucceedFunc rules subgoals sl}                   //Now confirm the subgoals, and after that return all the possible substitution lists
-                                                                                            //that are generated from different successful logic paths. This will be empty if not
-                                                                                            //all subgoals were succesful.
+let rec GetValidRuleList (rules:ruleGen list) (p1, p2) (substitutionList: (exp * exp) list) checkSubGoalsSucceedFunc =
+    seq {
+        for r in rules do                                                               //For each rule
+            match r() with                                                          //Pattern match the executed rule.
+            |Rule((r1, r2), subgoals) ->
+                match unify r1 p1 (Some(substitutionList)) |> unify r2 p2  with         //Attempt to unify it with the subgoal.
+                |None -> ()                                                             //No match, so don't ass this rule ot the list.
+                |Some(sl) ->                                                            //A Match!
+                   yield! checkSubGoalsSucceedFunc rules subgoals sl}                   //Now confirm the subgoals, and after that return all the possible substitution lists
+                                                                                        //that are generated from different successful logic paths. This will be empty if not
+                                                                                        //all subgoals were succesful.
 
 
 //Check subgoals is a function that runs recursively through a list of subgoals.
@@ -451,7 +453,7 @@ let hLock obj f = let onUnlock = ref (fun() -> ())
 // Will need to have:
 // Client ID that is requesting the experiment.
 // Experiment being requested.
-// Maybe the time its being requested.
+// Maybe the time its being requested.```````````````````````````````
 // Lab1 Queue [_,_,_,_,_]
 // Lab2 Queue [_,_,_,_,_]
 // Lab3 Queue [_,_,_,_,_]
