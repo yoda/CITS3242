@@ -470,33 +470,35 @@ type asyncExperiment (clientID, exp, delay) =
 let SplitIntoSufficed (queue:asyncExperiment Queue) (alab:lab) (exp:asyncExperiment) = 
     ([for exp1 in queue do if suffices alab.Rules (exp.Experiment, exp1.Experiment) then yield exp1], [for exp1 in queue do if not (suffices alab.Rules (exp.Experiment, exp1.Experiment)) then yield exp1])
 
-let chooseExperiment (queue:asyncExperiment Queue) (alab:lab) =
+let chooseExperiment (qref:asyncExperiment Queue ref) (alab:lab) =
     //TODO Everything after the enum is created through to when its done needs to be locked.
-    let mutable enum = queue.GetEnumerator ()
-    let f = enum.MoveNext () 
-    let myexp = enum.Current.Experiment
-    //For each experiment if it suffices for the first experimet, count how many other experiments it suffices for, and return a list of tuples of experiment, number fo exps it suffices pairs.
-    match 
-        [for exp in queue do 
-            if suffices alab.Rules (exp.Experiment,myexp) then 
-                yield (exp, List.fold(fun totalmatch (exp1:asyncExperiment) -> 
-                    totalmatch + 
-                    if suffices alab.Rules (exp.Experiment,exp1.Experiment) then 
-                        1 
-                    else 0
-                    ) 0 ([for k in queue.ToArray() do yield k]) )  ] |>
-            //Then fold the list into a tuple representing the maximum number of experiments that it suffices for.
-            List.fold (fun (maxExp, maxCount) (exp, count) -> 
-                if count > maxCount then 
-                    (exp, count) 
-                elif count = maxCount then 
-                    if (expSize exp.Experiment) > (expSize maxExp.Experiment) then 
+    lock qref (fun () ->
+        let mutable enum = (!qref).GetEnumerator ()
+        let f = enum.MoveNext () 
+        let myexp = enum.Current.Experiment
+        //For each experiment if it suffices for the first experimet, count how many other experiments it suffices for, and return a list of tuples of experiment, number fo exps it suffices pairs.
+        match 
+            [for exp in !qref do 
+                if suffices alab.Rules (exp.Experiment,myexp) then 
+                    yield (exp, List.fold(fun totalmatch (exp1:asyncExperiment) -> 
+                        totalmatch + 
+                        if suffices alab.Rules (exp.Experiment,exp1.Experiment) then 
+                            1 
+                        else 0
+                        ) 0 ([for k in (!qref).ToArray() do yield k]) )  ] |>
+                //Then fold the list into a tuple representing the maximum number of experiments that it suffices for.
+                List.fold (fun (maxExp, maxCount) (exp, count) -> 
+                    if count > maxCount then 
                         (exp, count) 
-                    else 
-                        (maxExp, maxCount)
-                else (maxExp, maxCount) 
-            ) (enum.Current, 0) with
-    |e,i->e
+                    elif count = maxCount then 
+                        if (expSize exp.Experiment) > (expSize maxExp.Experiment) then 
+                            (exp, count) 
+                        else 
+                            (maxExp, maxCount)
+                    else (maxExp, maxCount) 
+                ) (enum.Current, 0) with
+        |e,i->e
+   )
 
 
 
@@ -531,7 +533,7 @@ type labQueue (labID:int, resultCallback:asyncExperiment list -> bool option -> 
                     waitFor queuelength_internal
                 logger (sprintf "Thread: %s woke up because of new data: " Thread.CurrentThread.Name)
                 
-                let query = chooseExperiment workQueue.Value alab
+                let query = chooseExperiment workQueue alab
                 logger "Launching Lab Experiment Request"
                 lock flag <| fun() ->
                     while(flag.Value) do
