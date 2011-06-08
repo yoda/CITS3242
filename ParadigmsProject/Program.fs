@@ -581,7 +581,6 @@ type labQueue (labID:int, resultCallback:asyncExperiment list -> bool option -> 
     member this.setQueueLength len = queuelength <- len
 
 
-
 // Queue manager
 type labQueueMan (numQueues:int, resultCallback:asyncExperiment list -> bool option -> unit)= 
     
@@ -630,17 +629,13 @@ type client (clientID, numLabs) =
     
     // Priliminary result notifcation callback.
     let resultNotifications (experiments:asyncExperiment list) result = 
-        match result with
-        |None -> 
-            for asyncExp in experiments do
-                prStamp asyncExp.ClientID "DEBUG" (sprintf "Result for experiment: %s = None"  (getExperimentAsStringWithSubs asyncExp.Experiment (Some [])))
-        |Some(r) -> 
-            for asyncExp in experiments do
-                prStamp asyncExp.ClientID "DEBUG" (sprintf "Result for experiment: %s = %b"  (getExperimentAsStringWithSubs asyncExp.Experiment (Some [])) r)
+        for asyncExp in experiments do
+            (clients.Value.[asyncExp.ClientID]).giveResult result asyncExp
     
     // Setup the lab queue manager for this client
     let queueManager:labQueueMan = labQueueMan (numLabs, resultNotifications)
     
+    let mylabq = (ref (Queue ()), ref -1)
     
     
     let labControlled = ref None // None is I dont control a lab this gets reinitialised at InitClients.
@@ -655,97 +650,136 @@ type client (clientID, numLabs) =
             let nextForeignLastKnownCoord:int[] = clients.Value.[cid].getLastKnownCoord
             getCurrentLabOwner nextForeignLastKnownCoord.[lid] lid nextForeignLastKnownCoord  
 
+    let QueueToList () = 
+        match mylabq with 
+        |q, _ -> 
+            [for item in q.Value -> item]
+
+    member this.receiveLabQueue labid (ql:asyncExperiment list) = 
+        match mylabq with
+        |qref, idref -> 
+            qref := new Queue<asyncExperiment>(ql)
+            idref := labid
+            let lastKnownCoord = [|for labindex in [0..(lastKnownCoord.Length - 1)] do if labid = labindex then yield clientid else yield lastKnownCoord.[labindex]|] 
+            ()
+
+    member this.sendLabQueue cid = 
+        match mylabq with 
+        |q,id-> 
+            clients.Value.[cid].receiveLabQueue id.Value (QueueToList ()) |> ignore
+            id:= -1
+            let lastKnownCoord = [|for labindex in [0..(lastKnownCoord.Length - 1)] do if id.Value = labindex then yield cid else yield lastKnownCoord.[labindex]|] 
+            ()
+
+
+    member this.giveResult result (exp:asyncExperiment) =
+        match result with
+        |None-> prStamp clientID "DEBUG" (sprintf "Result for experiment: %s = None"  (getExperimentAsStringWithSubs exp.Experiment (Some [])))
+        |Some(b) -> prStamp clientID "DEBUG" (sprintf "Result for experiment: %s = %b"  (getExperimentAsStringWithSubs exp.Experiment (Some [])) b)
+        if not (exp.ClientID = clientID) then 
+            prRaw -1 "Wrong client ID given!!" //Doesn't get called :)
+
+
     member this.ClientID = clientID  // So other clients can find our ID easily
     member this.getLastKnownCoord = lastKnownCoord
-    member this.getQueueForLab labid = queueManager.queueForLab labid // Probably mutable object however not using it as a shared data store and will clone it.
+   // member this.getQueueForLab labid = queueManager.queueForLab labid // Probably mutable object however not using it as a shared data store and will clone it.
     
     // Determines if you own the Lab in question
-    member this.ownsLab labid = lastKnownCoord.[labid] = this.ClientID
+    member this.ownsLab labid = 
+        match mylabq with
+        |_,idref-> (idref.Value:int) = labid//lastKnownCoord.[labid] = this.ClientID
     
     member this.InitClients theClients theLabs =  clients:=theClients; labs:=theLabs; labControlled := (if ((Array.length !labs) - 1) < clientID then (None) else (Some clientID))
      
 
     member this.UpdateLabState (labid:int) (clientid:int) (queuelength:int) = 
         // Creates a new array with the updated clientid who owns that lab
-        let lastKnownCoord = [|for labindex in [0..(lastKnownCoord.Length - 1)] do if labid = labindex then yield clientid else yield lastKnownCoord.[labindex]|]
-        queueManager.queueForLab(labid).setQueueLength queuelength
+        let lastKnownCoord = [|for labindex in [0..(lastKnownCoord.Length - 1)] do if labid = labindex then yield clientid else yield lastKnownCoord.[labindex]|] 
         ()
+//        queueManager.queueForLab(labid).setQueueLength queuelength
+//        ()
     
     // Assumes that the caller has already checked for the most appropriate lab, basically just does what its told with no smarts.
     member this.EnqueueExperiment (experiment:asyncExperiment) (labid:int) =
         if this.ownsLab labid then
             // add the "exp" to the lab queue (i do this, since I have control of the lab)
-            queueManager.queueForLab(labid).enqueue(experiment)
+            match mylabq with
+            |qref, idref -> qref.Value.Enqueue(experiment)
+//            queueManager.queueForLab(labid).enqueue(experiment)
             // Call the originator of the experiment and update their last known coords for this lab
-            clients.Value.[experiment.ClientID].UpdateLabState labid this.ClientID (queueManager.queueForLab(labid).enqueuedExperiments.Value.Count)
+//            clients.Value.[experiment.ClientID].UpdateLabState labid this.ClientID (queueManager.queueForLab(labid).enqueuedExperiments.Value.Count)
         else
+            prRaw -1 "Forwarding lab request :s"
             clients.Value.[lastKnownCoord.[labid]].EnqueueExperiment experiment labid
             // Call "EnqueueExpriment" on the "clientid" that I *think* has control of the lab
             // e.g. proxy/forward this request on
         ()
 
     // Gets information about the lab in question, this allows the caller to make an informed decision of which lab to enqueue at.
-    member this.getLabQueueInformation clid labid =
+//    member this.getLabQueueInformation clid labid =
+//        if this.ownsLab labid then
+//            match mylabq with
+//            |qref, idref ->
+//                ()
+//            // add the "exp" to the lab queue (i do this, since I have control of the lab)
+//            // Call the originator of the experiment and update their last known coords for this lab
+//            clients.Value.[clid].UpdateLabState labid this.ClientID (queueManager.queueForLab(labid).enqueuedExperiments.Value.Count)
+//        else
+//            clients.Value.[lastKnownCoord.[labid]].getLabQueueInformation clid labid
+//            // Call "getLabQueueInformation" on the "clientid" that I *think* has control of the lab
+//            // e.g. proxy/forward this request on
+//        ()
+//    
+    member this.getLabInfo labid =
         if this.ownsLab labid then
-            // add the "exp" to the lab queue (i do this, since I have control of the lab)
-            // Call the originator of the experiment and update their last known coords for this lab
-            clients.Value.[clid].UpdateLabState labid this.ClientID (queueManager.queueForLab(labid).enqueuedExperiments.Value.Count)
-        else
-            clients.Value.[lastKnownCoord.[labid]].getLabQueueInformation clid labid
-            // Call "getLabQueueInformation" on the "clientid" that I *think* has control of the lab
-            // e.g. proxy/forward this request on
-        ()
-    
-    
+            match mylabq with
+            |qref, idref -> (clientID, qref.Value.Count)
+        else 
+            clients.Value.[lastKnownCoord.[labid]].getLabInfo labid
+            
         
     
     // This will be called each time a scientist on this host wants to submit an experiment.
-    member this.DoExp delay (exp:exp) =    // You need to write this dick.
+    member this.DoExp delay (exp:exp) =  
         let result = ref None
         let experiment = asyncExperiment(this.ClientID, exp, delay)
         
-        // For each labid 
-        for labid in [0..(numLabs - 1)] do
-            // Update the information about each lab
-            this.getLabQueueInformation this.ClientID labid
-        
-        // For each of the lab owners find out if anyone has an empty queue
-        let freeLab = ref None
+        let labinfos = [for labid in [0..(numLabs - 1)] do yield this.getLabInfo labid]
 
-        freeLab :=
-            try // Find the first client that owns a lab that has nothing in its queue (aka its free)
-                Some (List.find (fun(labid) -> queueManager.queueForLab(labid).getQueueLength = 0) [0..(numLabs - 1)])
-            with // List.find throws an exception if nothing is found. This means that there are no free labs.
-                | :? KeyNotFoundException -> prStamp this.ClientID "DEBUG" "No Free Labs"; None
+        let emptyLabs = 
+            List.fold(
+                fun acc elem ->
+                    match elem with
+                    |cid, size -> 
+                        if size = 0 then 
+                            elem::acc
+                        else 
+                            acc
+            ) [] labinfos
+
         
-        if freeLab.Value.IsNone then
+        if emptyLabs.Length = 0 then
             // There are no free labs, need to enqueue to all labs.
             for labID in [0..(numLabs - 1)] do
                 this.EnqueueExperiment experiment labID
         else
-            
-            // There is a free lab and I have a free lab (just use my free lab)
-            if false then//(queueManager.queueForLab(this.ClientID).getQueueLength = 0) then
-                ()            
-            
-            else
-                // There is a lab available and I dont have one   
-                if labControlled.Value.IsNone then
-                    ()
-                // Otherwise I have a lab already I should just continue processing. And enqueue to all labs.
-                else
-                    for labID in [0..(numLabs - 1)] do
-                        this.EnqueueExperiment experiment labID
-                    if runningLab.Value.IsNone then
-                        // What we have a lab and need to do work and havent started using our lab!
-                        // Start lab.
-                        queueManager.queueForLab(labControlled.Value.Value).listener(labs.Value.[labControlled.Value.Value])
-                        ()
-                    else // Its ok we are working...
-                        ()
-                    ()
-                ()
-            ()
+            match mylabq with 
+            |qref, idref -> 
+                if not (this.ownsLab idref.Value) then
+                    match emptyLabs.[0] with
+                    |cid, _ -> clients.Value.[cid].sendLabQueue clientID //We should now have the lab
+                this.EnqueueExperiment experiment idref.Value
+                //TODO here is a test to check if the lab is running an experiment if not, runit !!!!
+//                    if runningLab.Value.IsNone then
+//                        // What we have a lab and need to do work and havent started using our lab!
+//                        // Start lab.
+//                        queueManager.queueForLab(labControlled.Value.Value).listener(labs.Value.[labControlled.Value.Value])
+//                        ()
+//                    else // Its ok we are working...
+//                        ()
+//                    ()
+//                ()
+//            ()
         ()
 
 //////////////////////////////////////////////////////////////// Top level testing code follows.      
